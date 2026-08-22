@@ -1,0 +1,54 @@
+{
+  "id": "java-el-injection-waf-bypass",
+  "title": "Java EL Injection WAF Bypass via Reflection and Method Signature Strings",
+  "vuln_pattern": "Expression Language (EL) injection in a Java web application parameter (e.g., country validator) leading to remote code execution, with a WAF filtering common keywords for SQLi, XSS, OS injection, code injection, and Java classes/methods.",
+  "fingerprint": [
+    "Java web application with user input passed to an Expression Language evaluator",
+    "Input field named 'country' or similar validator endpoint",
+    "WAF blocking strings: \", ', #, >, <, bash, &, |, ;, `, ~, *, for, while, goto, if, Runtime, class, java, Name, char, Process, cmd, eval, Char, true, false, +, -, /, *, %, 0-9",
+    "Error messages or behavior indicating EL evaluation",
+    "SQL注入",
+    "注入",
+    "数据库",
+    "命令注入",
+    "命令执行",
+    "跨站脚本",
+    "绕过",
+    "鉴权绕过",
+    "过滤绕过",
+    "回连",
+    "回调",
+    "网站",
+    "应用",
+    "接口",
+    "后台"
+  ],
+  "exploit_steps": [
+    "Identify the EL injection point (e.g., a parameter in a country validation endpoint that reflects evaluated input).",
+    "Determine the WAF filter rules (case-sensitive blocklist of SQLi, XSS, OS injection, code injection, Java injection, and numeric characters).",
+    "Obtain a reference to java.lang.Class without using the blocked strings, e.g., via `[].getClass().getClass()` which does not contain any filtered keywords.",
+    "Use reflection on the Class object to obtain java.lang.Runtime without naming it directly: retrieve the `forName` method and invoke it with a string argument that bypasses the numeric filter by constructing strings from method signatures (e.g., calling `toString()` on a method reference).",
+    "Construct the command execution chain: get the `exec` method from Runtime's class, and invoke it with the desired OS command string built similarly from method-signature-to-string conversions.",
+    "Exfiltrate command output via DNS/HTTP callbacks or reflected output if possible, using similar string-construction techniques."
+  ],
+  "key_payloads": [
+    "[].getClass().getClass()",
+    "forName method invoked with a non-numeric string built from method signature conversion",
+    "getRuntime() obtained through reflection without using 'Runtime' literal",
+    "exec() with command string constructed from method signature strings"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "el-injection",
+    "waf-bypass",
+    "java-reflection",
+    "method-signature-string",
+    "blacklist-bypass"
+  ],
+  "source": "Sekai frog-waf writeup",
+  "created_ts": 1786270582.3021271,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

@@ -1,0 +1,45 @@
+{
+  "id": "linux-privilege-escalation",
+  "title": "Linux 提权方法论",
+  "vuln_pattern": "privesc-linux",
+  "fingerprint": [
+    "shell",
+    "www-data",
+    "suid",
+    "sudo",
+    "cron",
+    "capabilities",
+    "kernel",
+    "docker.sock",
+    "路径穿越",
+    "提权",
+    "权限提升",
+    "渗透",
+    "内网",
+    "横向"
+  ],
+  "exploit_steps": [
+    "自动枚举:linpeas/pspy",
+    "检查:sudo -l、SUID(find / -perm -4000)、capabilities、可写 cron/service、PATH 劫持",
+    "内核漏洞(uname -a→exploit)",
+    "容器逃逸:/var/run/docker.sock、特权容器、cgroup release_agent",
+    "GTFOBins 利用允许的二进制"
+  ],
+  "key_payloads": [
+    "sudo -l",
+    "find / -perm -4000 -type f 2>/dev/null",
+    "getcap -r / 2>/dev/null",
+    "cat /etc/crontab"
+  ],
+  "category": "pentest",
+  "cve": [],
+  "tags": [
+    "privesc",
+    "post-exploitation"
+  ],
+  "source": "seed: pentest methodology",
+  "created_ts": 0.0,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

@@ -1,0 +1,58 @@
+{
+  "id": "web-attack-methods",
+  "title": "Web 漏洞挖掘通用方法论",
+  "vuln_pattern": "web-recon-to-exploit",
+  "fingerprint": [
+    "http",
+    "web",
+    "api",
+    "login",
+    "upload",
+    "cookie",
+    "admin",
+    "graphql",
+    "swagger",
+    "SQL注入",
+    "注入",
+    "数据库",
+    "服务端请求伪造",
+    "内网探测",
+    "模板注入",
+    "服务端模板注入",
+    "令牌",
+    "会话伪造",
+    "上传",
+    "文件上传",
+    "webshell",
+    "越权",
+    "水平越权",
+    "网站",
+    "应用",
+    "接口",
+    "后台"
+  ],
+  "exploit_steps": [
+    "指纹:识别框架/中间件/版本(headers,报错页,favicon,/actuator,/swagger)",
+    "目录/参数枚举:ffuf/feroxbuster + arjun 挖隐藏参数",
+    "逐类测试:SQLi(sqlmap)、SSTI({{7*7}})、命令注入、路径穿越、SSRF、XXE、IDOR、认证绕过、文件上传、反序列化",
+    "识别到组件+版本→cve_intel/nuclei 查已知 CVE",
+    "链式:代理归一化绕 ACL→到内网端点;JWT 伪造→提权"
+  ],
+  "key_payloads": [
+    "ffuf -u http://T/FUZZ -w wordlist",
+    "sqlmap -u 'http://T/?id=1' --batch --dbs",
+    "{{7*7}} / ${7*7} / #{7*7}"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "web",
+    "recon",
+    "methodology"
+  ],
+  "source": "seed: pentest methodology",
+  "created_ts": 0.0,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

@@ -1,0 +1,57 @@
+{
+ "id": "web-frontend-js-hidden-endpoint",
+ "title": "前端 JS 泄露隐藏 API 端点/硬编码口令→POST 调用拿 flag(通用流程)",
+ "vuln_pattern": "终端/游戏风格前端页面在 JS 文件里引用了未在页面导航中出现的 API 端点,或硬编码了命令/口令串——读 JS 找到端点与参数名,POST/GET 直接调用",
+ "fingerprint": [
+  "terminal",
+  "终端",
+  "game.js",
+  "commands.js",
+  "main.js",
+  "前端JS",
+  "隐藏端点",
+  "hidden endpoint",
+  "硬编码口令",
+  "hardcoded",
+  "源码泄露",
+  "source code analysis",
+  "easter egg"
+ ],
+ "exploit_steps": [
+  "取主页面,识别终端/游戏/控制台风格界面(页面本身可能只是壳,逻辑全在 JS)。",
+  "枚举 /static/ 下的全部 JS(常见:main.js / commands.js / game.js / config.js),逐文件读。",
+  "grep JS 里的 fetch/axios/XMLHttpRequest 调用与字符串字面量:找 ①未在页面导航出现的端点路径 ②硬编码的口令/token/命令字符串(常是彩蛋风格的长句) ③参数名。",
+  "构造 POST/GET 请求调用发现的端点:Content-Type 按 JS 指示(json/form),body 参数名和值都从 JS 里抄。",
+  "从响应体读 flag;若响应是 JSON,检查嵌套字段。",
+  "若端点需要鉴权:先看 JS 里有没有附带 token/cookie 逻辑,或端点本身无需鉴权直接打。"
+ ],
+ "key_payloads": [
+  "# 枚举 JS\ncurl -s <base>/static/js/*.js | grep -oE '(fetch|axios)\\([^)]*\\)|[\"'\\''\"]/api/[^\"'\\''\"]*[\"'\\''\"]'\n# 调用隐藏端点\ncurl -X POST <base>/<discovered_endpoint> -H 'Content-Type: application/json' -d '{\"<param_from_js>\": \"<value_from_js>\"}'"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "frontend-js",
+  "hidden-api",
+  "hardcoded-secret",
+  "source-code-analysis",
+  "easter-egg",
+  "terminal",
+  "api",
+  "web"
+ ],
+ "source": "复盘提炼(CTF 通用方法)",
+ "source_tier": "seed",
+ "preconditions": [
+  "页面逻辑主要在前端 JS 中(终端/游戏/控制台风格)",
+  "存在页面导航未暴露的 API 端点或硬编码字符串"
+ ],
+ "verify_oracle": "调用的端点返回 200 且响应体含 flag 或可读数据",
+ "pitfalls": [
+  "JS 文件名不固定(不一定是 commands.js/game.js)——枚举 /static/ 全目录而非猜文件名",
+  "端点可能要求特定 Content-Type——照 JS 里的请求头抄,不是猜",
+  "硬编码口令串可能是彩蛋风格的长句——别当噪音跳过"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

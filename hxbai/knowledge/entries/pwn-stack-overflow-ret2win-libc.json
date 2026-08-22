@@ -1,0 +1,50 @@
+{
+  "id": "pwn-stack-overflow-ret2win-libc",
+  "title": "栈溢出 → ret2win / ret2libc（含坏字节与对齐）",
+  "vuln_pattern": "读入长度 > 缓冲区，覆盖返回地址；跳 win 函数或 system('/bin/sh')",
+  "fingerprint": [
+    "stack overflow",
+    "gets",
+    "read(0",
+    "strcpy",
+    "buffer",
+    "ret2win",
+    "ret2libc",
+    "rop",
+    "栈溢出",
+    "溢出返回地址"
+  ],
+  "exploit_steps": [
+    "checksec 看 NX/PIE/Canary/RELRO；反汇编找危险读入与缓冲区大小",
+    "用 gdb 工具动态求偏移：发 cyclic 模式，观察崩溃时 rip/被覆盖值，反查偏移(别静态猜——这是网络工具题失败的教训)",
+    "有 win/system 函数：payload = 'A'*offset + [ret 对齐] + p64(win)。栈需 16 字节对齐时插一个裸 ret gadget",
+    "无 win：泄漏 libc(用已知 got 打印)→算 libc base→ret2libc(system+/bin/sh) 或 one_gadget",
+    "注意坏字节：若读入以 \\n(0x0a)/\\x00 截断，ROP 地址不能含该字节——用 gdb 实测发现坏字节后换 gadget"
+  ],
+  "key_payloads": [
+    "cyclic(200) 求偏移；cyclic_find(泄漏值)",
+    "b'A'*offset + p64(ret_gadget) + p64(win_addr)",
+    "b'A'*offset + p64(pop_rdi)+p64(binsh)+p64(ret)+p64(system)"
+  ],
+  "category": "pwn",
+  "cve": [],
+  "tags": [
+    "pwn",
+    "binary",
+    "stack-overflow",
+    "ret2win",
+    "ret2libc"
+  ],
+  "source": "original: v2 technique card",
+  "created_ts": 0.0,
+  "preconditions": [
+    "读入函数长度大于栈缓冲区(read(0,buf,N) N>sizeof buf / gets)",
+    "无 canary 或可绕过"
+  ],
+  "verify_oracle": "远端返回 shell（id 回显 uid=）后 cat flag；或崩溃点 rip 精确等于预期地址(gdb 确认)",
+  "pitfalls": [
+    "坏字节(0x0a/0x00)截断 payload——必须动态发现并规避，静态猜必错",
+    "16 字节栈对齐：movaps 崩溃时加一个 ret gadget",
+    "PIE 开启需先泄漏基址再算地址"
+  ]
+}

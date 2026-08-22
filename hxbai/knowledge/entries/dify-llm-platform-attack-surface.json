@@ -1,0 +1,56 @@
+{
+ "id": "dify-llm-platform-attack-surface",
+ "title": "Dify LLM App Platform — Backend Console API, Setup Reinit, and Node SSRF/Code-Exec",
+ "vuln_pattern": "Dify serves a Next.js frontend (port 3000) proxying a separate backend console/service API (port 5001); the real attack surface is on the backend — an open setup/init endpoint that re-creates the admin, SSRF via the HTTP-request node, and sandbox escape via the code node.",
+ "fingerprint": [
+  "dify",
+  "Dify",
+  "LLM集成",
+  "大模型门户",
+  "LLM app platform",
+  "/console/api",
+  "/api/v1",
+  "next.js frontend",
+  "backend console API on :5001",
+  "manifest name dify",
+  "install/setup page",
+  "app builder with HTTP/code nodes",
+  "大模型",
+  "llm",
+  "ai应用",
+  "提示词",
+  "智能体",
+  "模型平台",
+  "知识库"
+ ],
+ "exploit_steps": [
+  "Fingerprint Dify; note the frontend on :3000 is a Next.js shell that PROXIES the backend console API — many exploit paths need the backend (:5001 or the /console/api proxy), not the frontend routes which return Next.js 404s.",
+  "Check the install state: if /console/api/setup (or /install) is still open, POST to re-initialize and create an admin account, then log in.",
+  "If authenticated app-building is available, use the HTTP-request node for SSRF (reach internal services / cloud IMDS / the flag service) or the code node to escape the execution sandbox.",
+  "Locate the flag via SSRF-reachable internal endpoint, a readable secret/env, or the code-node sandbox escape, and exfiltrate."
+ ],
+ "key_payloads": [
+  "POST /console/api/setup  (re-initialize admin if setup is not locked)",
+  "reach the backend API directly on :5001 or via the /console/api proxy, not the :3000 Next.js routes",
+  "HTTP-request node -> http://169.254.169.254/ or an internal flag service; code node -> sandbox escape"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "dify",
+  "llm-platform",
+  "backend-pivot",
+  "ssrf",
+  "setup-reinit",
+  "sandbox-escape"
+ ],
+ "source": "original: Dify architecture (frontend/backend split) + common LLM-platform attack surface",
+ "preconditions": [
+  "HTTP access to the Dify frontend"
+ ],
+ "verify_oracle": "flag read via SSRF-reachable endpoint / secret / sandbox escape",
+ "pitfalls": [
+  "do NOT stay on the :3000 Next.js frontend when its API paths 404 — pivot to the backend console API"
+ ],
+ "created_ts": 1786600000.0
+}

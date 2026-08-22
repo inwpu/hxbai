@@ -1,0 +1,46 @@
+{
+  "id": "source-code-hunting",
+  "title": "源码审计挖洞方法论",
+  "vuln_pattern": "sast-source-audit",
+  "fingerprint": [
+    "source",
+    "source code",
+    "repo",
+    "app.py",
+    "routes",
+    "controller",
+    "provided files",
+    "远程代码执行",
+    "命令执行",
+    "代码执行",
+    "getshell",
+    "模板注入",
+    "反序列化",
+    "网站",
+    "应用",
+    "接口",
+    "后台"
+  ],
+  "exploit_steps": [
+    "跑 analyze_source(SAST+AI 分诊)定位 sink",
+    "人工追污点:用户输入(request/params)→危险 sink(exec/query/deserialize/template)",
+    "确认可控且跨信任边界、无有效过滤(参数化/白名单=排除)",
+    "对高危写 PoC 动态验证;对 web 题回到 live 靶机武器化"
+  ],
+  "key_payloads": [
+    "analyze_source path='.'",
+    "grep -rniE 'exec|system|eval|pickle|yaml.load|render_template_string|Runtime.exec' ."
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "source-audit",
+    "sast",
+    "mining"
+  ],
+  "source": "seed: mining methodology",
+  "created_ts": 0.0,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

@@ -1,0 +1,55 @@
+{
+  "id": "onepanel-security-entrance-rce",
+  "title": "1Panel Server Management Panel — Security-Entrance Discovery then Authenticated RCE",
+  "vuln_pattern": "1Panel Linux server management panel gates its login behind a secret URL 'security entrance' (安全入口) path prefix; reaching the panel requires that prefix, after which valid credentials plus the panel's built-in terminal/cron/file features (or a known auth-bypass CVE) give command execution and flag read.",
+  "fingerprint": [
+    "1panel",
+    "1Panel",
+    "server management panel",
+    "安全入口",
+    "security entrance",
+    "authMethod=jwt",
+    "/api/v1/",
+    "panel returns a generic/blank page without the entrance prefix",
+    "login needs an 'entrance' value",
+    "control panel on a non-standard port",
+    "运维面板",
+    "管理面板",
+    "代码执行",
+    "远程代码执行",
+    "后台"
+  ],
+  "exploit_steps": [
+    "Fingerprint 1Panel from the /api/v1 routes, the JWT auth flow, or the panel branding; note that requests without the correct security-entrance path prefix return a generic page rather than the login.",
+    "Recover the security entrance: it is a fixed URL prefix stored in the panel config (/opt/1panel/conf or the settings API). Look for it leaked in JS, in an exposed config/backup file, in an error/redirect, or brute a short wordlist of likely entrance strings; the login only appears at /<entrance>/login.",
+    "Authenticate at the entrance path with the provided/known credentials to obtain the JWT session.",
+    "Use an authenticated feature for command execution: the built-in web terminal / SSH, a cron job that runs a shell command, or a container/exec action; if credentials are not accepted, chain a known 1Panel CVE for the fingerprinted version — CVE-2025-66507 (captcha check bypassed by a client-supplied parameter) for pre-auth access, CVE-2025-54424 (RCE via agent certificate-validation bypass) for code exec.",
+    "Run a command to read the flag from the filesystem or an env var and exfiltrate its output."
+  ],
+  "key_payloads": [
+    "GET /<security-entrance>/login  (the real login only serves under the entrance prefix)",
+    "read /opt/1panel/conf or the settings API for the EntranceCode / SecurityEntrance value",
+    "authenticated cron/terminal action: `cat /flag` or read the target secret"
+  ],
+  "category": "web",
+  "cve": [
+    "CVE-2025-66507",
+    "CVE-2025-54424"
+  ],
+  "tags": [
+    "1panel",
+    "management-panel",
+    "security-entrance",
+    "authenticated-rce",
+    "jwt"
+  ],
+  "source": "original: 1Panel public advisories + panel design (security-entrance mechanism)",
+  "preconditions": [
+    "network access to the panel port"
+  ],
+  "verify_oracle": "a command runs and returns the flag from real output",
+  "pitfalls": [
+    "the login is invisible without the correct entrance prefix — do NOT conclude the panel is down; find the entrance first"
+  ],
+  "created_ts": 1786600000.0
+}

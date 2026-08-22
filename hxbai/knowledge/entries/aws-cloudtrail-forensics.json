@@ -1,0 +1,52 @@
+{
+  "id": "aws-cloudtrail-forensics",
+  "title": "CloudTrail 云取证（凭证盗用/提权追踪）",
+  "vuln_pattern": "cloudtrail lookup-events forensics",
+  "fingerprint": [
+    "CloudTrail LookupEvents",
+    "DescribeTrails denied",
+    "AKIA vs ASIA vs AROA",
+    "sourceIPAddress userAgent",
+    "S3 server access logs",
+    "PurgeQueue StopLogging DeleteTrail",
+    "远程代码执行",
+    "命令执行",
+    "代码执行",
+    "getshell",
+    "越权",
+    "未授权",
+    "取证",
+    "对象存储",
+    "存储桶",
+    "云权限",
+    "云环境",
+    "云"
+  ],
+  "exploit_steps": [
+    "仅 cloudtrail lookup-events(DescribeTrails 被拒) 分页拉全量",
+    "每条 CloudTrailEvent 是字符串 → json.loads 取 sourceIPAddress/userAgent/errorCode/userIdentity",
+    "按 IP + userIdentity.type 分组(只按 IP 会漏 IAMUser→AssumedRole 提权跳)",
+    "锚定异常：同一 AccessKey 换 IP / AKIA→ASIA 跳",
+    "读反取证尾巴：StopLogging/DeleteTrail/PurgeQueue",
+    "对象级外带证据不在 CloudTrail → 关联 S3 服务器访问日志(operation=REST.GET.OBJECT)"
+  ],
+  "key_payloads": [
+    "aws cloudtrail lookup-events --max-results 50 --next-token ...",
+    "json.loads(ev['CloudTrailEvent'])['userIdentity']['type']"
+  ],
+  "category": "cloud",
+  "cve": [],
+  "tags": [],
+  "source": "original: v2 §10.4 cloud card",
+  "created_ts": 1786489746.586171,
+  "preconditions": [
+    "交付是 N 个答案(攻击者 IP/用户/动作)，不是 flag"
+  ],
+  "verify_oracle": "导出的答案(攻击者 IP/用户/动作)与题目校验一致",
+  "pitfalls": [
+    "排除调查者自己被拒的探测(从平台出口 IP 落进日志)",
+    "分组只按 IP 会漏提权跳，要加 identity.type",
+    "key 前缀：AKIA 长期/ASIA 临时/AROA 角色",
+    "事件量大(~3300)分页慢，要翻全"
+  ]
+}

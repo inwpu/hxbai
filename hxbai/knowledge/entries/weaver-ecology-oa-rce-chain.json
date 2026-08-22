@@ -1,0 +1,58 @@
+{
+ "id": "weaver-ecology-oa-rce-chain",
+ "title": "Weaver (泛微) E-cology / E-office OA — Unauth RCE Chains (BeanShell, SQLi, File Upload)",
+ "vuln_pattern": "Weaver (泛微) enterprise OA exposes several unauthenticated endpoints with long-standing RCE: a BeanShell servlet that executes Java, SQL-injection endpoints that enable stacked queries/writes, and file-upload actions that drop a JSP webshell.",
+ "fingerprint": [
+  "weaver",
+  "泛微",
+  "E-cology",
+  "ecology",
+  "E-office",
+  "OA",
+  "协同办公",
+  "/weaver/",
+  "/wui/",
+  "bsh.servlet.BshServlet",
+  "WorkflowServiceXml",
+  "KtreeUploadAction",
+  "Weaver-OA admin backend",
+  "captcha login on an OA portal"
+ ],
+ "exploit_steps": [
+  "Fingerprint Weaver from /weaver/ or /wui/ paths, the E-cology/E-office branding, or the OA login.",
+  "Try the unauthenticated BeanShell servlet at /weaver/bsh.servlet.BshServlet — POST a `bsh.script` that runs Java (Runtime.exec) for direct command execution.",
+  "If BeanShell is patched, try the known unauth SQL-injection endpoints (e.g. WorkflowServiceXml / mobile plugin / api paths) for data read or stacked-query write.",
+  "Alternatively use the file-upload getshell path (e.g. KtreeUploadAction / the front-end upload) to drop a JSP webshell, then execute commands.",
+  "With code execution, read the flag from the filesystem/DB and exfiltrate. Avoid the captcha-gated interactive login entirely by using these direct endpoints."
+ ],
+ "key_payloads": [
+  "POST /weaver/bsh.servlet.BshServlet  bsh.script=... Runtime.getRuntime().exec(...)",
+  "unauth SQLi at WorkflowServiceXml / mobile/plugin endpoints",
+  "JSP webshell via the Ktree/file-upload action"
+ ],
+ "category": "web",
+ "cve": [
+  "CVE-2023-2523",
+  "CVE-2022-31019"
+ ],
+ "tags": [
+  "weaver",
+  "泛微",
+  "ecology",
+  "oa",
+  "beanshell-rce",
+  "sqli",
+  "file-upload-getshell",
+  "unauth"
+ ],
+ "source": "original: Weaver E-cology/E-office public CVE surface (BeanShell/SQLi/upload)",
+ "preconditions": [
+  "HTTP access to the OA"
+ ],
+ "verify_oracle": "command execution returns the flag / webshell reads it",
+ "pitfalls": [
+  "do NOT burn time OCR-ing the captcha login — the unauth /weaver endpoints bypass it",
+  "/weaver/ /ecology/ /wui/ 及 bsh.servlet 等指纹路径全 404 + 自研风格登录页 = 仿制OA(非真泛微): 立即放弃泛微CVE链,转'产品名→默认凭证族+口令学'路线(拼音fanwei/英文名weaver都做),并按内网认证爆破工程学卡执行"
+ ],
+ "created_ts": 1786600000.0
+}

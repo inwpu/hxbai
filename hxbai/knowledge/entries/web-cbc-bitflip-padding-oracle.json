@@ -1,0 +1,54 @@
+{
+ "id": "web-cbc-bitflip-padding-oracle",
+ "title": "Web 里的对称密码攻击:AES-CBC 比特翻转改 cookie/权限位 + Padding Oracle 解密任意密文",
+ "vuln_pattern": "应用用 AES-CBC(无 MAC)加密 cookie/会话/token,或解密错误可区分(500 vs 正常/padding 错误文案不同)——CBC 结构缺陷导致明文可控或可解密",
+ "fingerprint": [
+  "AES-CBC",
+  "cbc",
+  "比特翻转",
+  "bit flipping",
+  "padding oracle",
+  "填充预言",
+  "cookie加密",
+  "加密cookie",
+  "iv",
+  "初始向量"
+ ],
+ "exploit_steps": [
+  "定性:拿到 base64/hex 的长 token(32 的倍数字节),先看结构 [IV(16B) || 密文块们]——很多框架把 IV 拼在密文头部,翻转 IV 第 i 字节 = 翻转下一块明文第 i 字节,块内后部会乱但常见目标(username/admin 字段)可用对齐避开。",
+  "比特翻转改字段:cookie 明文形如 user=bob;role=user 时,定位目标字节所在块的偏移,改 IV/前块对应字节 XOR (原值 XOR 期望值);后块损坏不影响被改块之前的解析(按 & 分隔解析时坏块常被当乱码字段忽略)。",
+  "Padding Oracle(响应可区分 padding 错误):逐字节恢复任意密文块——对目标密文前放自制 R 块,从最后一字节枚举 0x01..0xff 直到响应进入'padding 正确'分支;得 R[15] XOR 0x01 ^ C[15] = P[15],再推倒数第二字节(目标 padding 0x02 0x02),逐块完整解出。",
+  "加密任意明文(Padding Oracle 的逆用):先构造尾部块再逐块前推(先解出 Delta_i = D(C_i) XOR 已知关系,再选 C_{i-1} = Delta_i XOR 想要的 P_i)。",
+  "实现:Python requests 单文件 + 并行(Oracle 在线交互时先测单字节延迟,慢 oracle 每块 16*128 次请求,估算耗时再决定并发度);错误分支判据先校准(状态码/长度/文案三类特征取最稳的)。",
+  "相关变体:验证码/AES(key 常量 C*32 之类弱密钥)半遮蔽输出的题,对密文做 Padding Oracle 恢复未显示部分;CBC-MAC 无填充伪造走 /opt/kb PayloadsAllTheThings 的 Padding Oracle 分区抄现成脚本。"
+ ],
+ "key_payloads": [
+  "# CBC 比特翻转: 改 IV 的第 i 字节让明文第 i 字节从 old 变 new\niv = bytearray(b64decode(token)[:16])\niv[i] ^= ord(old) ^ ord(new)\nnew_token = b64encode(bytes(iv) + ct).decode()",
+  "# Padding Oracle 最后一字节枚举骨架\nfor guess in range(256):\n    r = bytearray(FAKE_BLOCK); r[15] = guess\n    resp = post(url, token=b64encode(bytes(r) + target_block))\n    if is_padding_ok(resp):          # 与正常 padding 分支一致的判据\n        last_plain = guess ^ 0x01 ^ target_prev[15]; break"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "cbc-bit-flip",
+  "padding-oracle",
+  "aes",
+  "cookie-forgery",
+  "iv-manipulation",
+  "crypto-web"
+ ],
+ "source": "writeup 提炼(CTF 实战实例分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "认证/会话状态放在加密 cookie 里(CBC 无 MAC)",
+  "或存在对攻击者密文做解密且错误可区分的端点"
+ ],
+ "verify_oracle": "翻转后的 cookie 被服务端接受为 admin/目标身份(进入特权页),Padding Oracle 解出的明文含可读字段名",
+ "pitfalls": [
+  "先确认 IV 是不是密文头 16 字节——有些实现 IV 固定或随机另传,结构猜错全白做",
+  "oracle 判据要用'padding 正确'分支而非'业务成功'分支——两者常不同(先拿一个已知正确密文标定)",
+  "改 IV 只影响第一块明文;要改第二块要去改第一块密文(同时破坏第一块明文——按字段分隔解析时经常仍可用)",
+  "Oracle 并发别打太猛:限速 + 串行重试,别触发 WAF/锁定把预言机关了"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

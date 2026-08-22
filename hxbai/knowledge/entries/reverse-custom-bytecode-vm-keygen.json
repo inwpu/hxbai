@@ -1,0 +1,42 @@
+{
+  "id": "reverse-custom-bytecode-vm-keygen",
+  "title": "自研字节码VM/解释器 授权码校验类逆向（keygen）",
+  "vuln_pattern": "custom-bytecode-vm keygen —— VM 的每个惯用语(idiom)恰好是解码链的一步；凭据在静态数据段，离线逆推而非盲爆破",
+  "fingerprint": [
+    "嵌入式", "授权", "访问码", "校验", "凭据", "逆向", "可执行文件",
+    "自研", "字节码", "虚拟机", "解释器", "执行机制", "vm", "bytecode",
+    "keygen", "validator", "opcode", "keystream"
+  ],
+  "exploit_steps": [
+    "先摸协议再碰二进制：nc 连服务收提示文本/交互格式(访问码、凭据输入点)，想办法拿到二进制本体(HTTP /download、固件解包、base64 回传)；服务上常无提交口，flag 平台侧提交。",
+    "objdump -d -M intel 全量反汇编(这类题往往只有几百行)。静态定位三块：入口校验 main、数据段固定偏移的凭据字节块(.data)、VM 分发器(switch/跳转表)。硬编码访问码常以 movabs 立即数出现——按小端取字节、逐字节 XOR/变形即得。",
+    "还原 VM 三件套：opcode 表、寄存器/栈/计数器语义、每条指令的运算(XOR 掩码 / 循环移位 ROTL·ROTR / 加减常数)。跳转表基址在 .rodata，opcode 经 (op + 常数) 归一化成索引。",
+    "核心——‘VM 惯用语即解码步骤’：校验器用来生成/比较凭据的指令序列，其逆变换就是解密算法。把凭据块按指令序列逐字节逆推；即使某些 handler 把字节读进寄存器后丢弃(dead store)，那些值仍是解码链的操作数，别当无关。",
+    "解密常量可能不在字面量里——由‘派生指令常数 + 输出指令常数’复合而来(例如分派归一化的 add 常数、putc 输出的字符值、跳转的异或常量、mask 表)。枚举二进制字面量找不到属正常，要从惯用语推。",
+    "已知明文作 crib：flag 前缀/格式(FLAG{ 开头、} 结尾、长度=VM 输出的点数/循环轮数)验证解码；本地跑通再提交。连续同类运算先化简(两次 ROTR 的旋转量满足 b+(b^C)≡常数(mod 8) 可折叠为单次常数旋转；加减常数复合成净值)。"
+  ],
+  "key_payloads": [
+    "# 访问码：movabs 立即数按小端逐字节变形\nc = 0x<8字节立即数>; bs = c.to_bytes(8,'little'); code = ''.join(chr(b ^ 0x<常数>) for b in bs)",
+    "def ror8(x,n): n&=7; return ((x>>n)|(x<<(8-n)))&0xff",
+    "# 解码链形态(顺序即 VM 惯用语顺序，常数从指令派生)：\n# v = blob[i] ^ mask[i&len(mask)-1]; v = ror8(v, bc[i%L]); v = ror8(v, (bc[i%L]^C)); v = (v - Ka)&0xff; v = (v + Kb)&0xff",
+    "# 反面(通常失败，别过度投入)：把 blob 当密文、材料当密钥流做 XOR/ADD/SUB/RC4/PRNG/XTEA/置换 穷举——密钥流模型表达不了按位旋转"
+  ],
+  "category": "reverse",
+  "cve": [],
+  "tags": ["reverse", "keygen", "vm", "bytecode", "embedded", "授权码", "逆向"],
+  "source": "writeup 提炼(某轮实测成功路径 vs 失败路径对照)",
+  "source_tier": "seed",
+  "preconditions": [
+    "TCP 自定义协议/裸二进制的授权校验类逆向题；自研字节码 VM/解释器/FSM 承载校验",
+    "程序运行只打印固定文本/点号，凭据在 .data 静态字节块(长度常等于输出轮数)，无运行期自解密/自修改"
+  ],
+  "verify_oracle": "离线解码结果匹配 flag 格式(FLAG{ 开头 } 结尾)且长度等于 VM 输出的点数/循环轮数；用已知前缀 crib 逐字节校验一致",
+  "pitfalls": [
+    "材料枚举式爆破(百万级组合 + 数百次猜测提交)几乎必败且不可逆烧时间——密钥流(XOR/ADD/SUB/周期/置换)表达不了按位旋转与算术常数",
+    "解密常数常不作字面量出现，只能由 VM 惯用语常数(分派偏移/输出字符/跳转异或)复合推出，枚举字面量永远差一步",
+    "为几百行反汇编装 ghidra/angr/qiling/qemu 全家桶得不偿失——系统自带 objdump + python3 足够，装工具/跨题考古/盲猜提交会挤占核心分析",
+    "handler 读入后丢弃(dead store)的字节不是无关噪声，是解码链的操作数",
+    "开局先把 hint/帮助类 API 找全(题面 hint 决定搜索框架)；单点卡住超 20 分钟就换假设，别在同一穷举家族里平移"
+  ],
+  "anti_fingerprint": []
+}

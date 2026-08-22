@@ -1,0 +1,49 @@
+{
+  "id": "gradio-file-path-traversal-lfi",
+  "title": "Gradio Arbitrary File Read via /file= Path Traversal (CVE-2024-1561)",
+  "vuln_pattern": "Gradio's file-serving route resolves attacker-controlled paths without proper containment, allowing arbitrary local file read through /file= traversal — used to read the flag, app source, and process/env info.",
+  "fingerprint": [
+    "gradio",
+    "Gradio",
+    "算法效果展示",
+    "AI 模型演示",
+    "model demo",
+    "/file=",
+    "/config",
+    "gradio app on a high port",
+    "queue/join websocket",
+    "app.py demo interface"
+  ],
+  "exploit_steps": [
+    "Fingerprint Gradio (the /config route, the queue/websocket, the demo UI) and confirm the version is vulnerable.",
+    "Read arbitrary files via the file route: GET /file=/etc/passwd to confirm, then traverse to the flag and to the app source to learn where the flag lives.",
+    "If direct /file=/flag fails, read the app source (e.g. /file=/app/app.py) and /proc/self/environ to locate the flag path or an embedded secret, then read it.",
+    "Exfiltrate the flag from the file-read response."
+  ],
+  "key_payloads": [
+    "GET /file=/etc/passwd",
+    "GET /file=/flag  and  /file=/flag.txt",
+    "GET /file=/proc/self/environ",
+    "GET /file=/app/app.py  (find the real flag path)"
+  ],
+  "category": "web",
+  "cve": [
+    "CVE-2024-1561"
+  ],
+  "tags": [
+    "gradio",
+    "lfi",
+    "path-traversal",
+    "arbitrary-file-read",
+    "ai-demo"
+  ],
+  "source": "original: CVE-2024-1561 public advisory (/file= traversal)",
+  "preconditions": [
+    "HTTP access to the Gradio app"
+  ],
+  "verify_oracle": "the flag string appears in a /file= read response",
+  "pitfalls": [
+    "the flag may not be at /flag — read the app source + /proc/self/environ to find its real path"
+  ],
+  "created_ts": 1786600000.0
+}

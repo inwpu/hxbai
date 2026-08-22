@@ -1,0 +1,56 @@
+{
+ "id": "web-auth-bypass-type-juggling",
+ "title": "认证旁路的类型混淆族(PHP == 松散比较、0e 魔术哈希、strcmp null、array 索引、bool 注入)",
+ "vuln_pattern": "认证/校验逻辑用松散比较或非常量时间比较:PHP == 的类型转换规则、'0e...' 魔术哈希碰撞、strcmp(arr, x) 返回 null、in_array 松散模式、JSON bool 直插比较",
+ "fingerprint": [
+  "类型混淆",
+  "type juggling",
+  "魔术哈希",
+  "magic hash",
+  "0e",
+  "松散比较",
+  "loose comparison",
+  "strcmp",
+  "in_array",
+  "md5碰撞",
+  "OTP",
+  "验证码比较"
+ ],
+ "exploit_steps": [
+  "读源码找比较算子:== 而非 ===、strcmp(...) == 0、in_array($x, $arr)(无 true 第三参)、array_search 松散模式。任何一处即入口。",
+  "PHP == 规则速用:0 == \"string\" 为 true(非数字串转 0)——password 字段传数组/传 0 常直接过 \"md5(input) == stored\" 型;\"abc\" == 0 也是 true;true == 任何非空串。JSON 里把期望字段改成 true 常过 if (resp == expected)。",
+  "0e 魔术哈希(md5(x) 全为 0e+digits 时 == 互等):经典对 QNKCDZO / 240610708 / s878926199a(md5=0e 系);遇到 \"md5($input) == md5($stored)\" 的题直接喂 0e 串;新哈希面用脚本扫前缀 0e 的短串。",
+  "strcmp 旁路:strcmp($_GET['pw'], $secret) == 0 判断时传 pw[]=x(数组)→ strcmp 返回 null,null == 0 为 true。同理 array 参数喂给 hash_equals/hash 函数常 500 或 null。",
+  "OTP/TOTP/验证码比较(google2fa 类):== 比较 OTP 数字串时,传 true/传数组;或 OTP 明文被编码进响应/前端(先翻 JS/cookie 再硬碰);时间窗大的可离线算——密钥常硬编码在源码里。",
+  "多因素串联题:先拿类型混淆进第一层,信息泄露(报错回显)拿第二层密钥,最后越权收 flag。"
+ ],
+ "key_payloads": [
+  "# 常用 0e 魔术哈希串(md5 后为 0e 纯数字, == 互等)\nQNKCDZO 240610708 s878926199a s155964671a s214587387a\n# md5(QNKCDZO) = 0e830400451993494058024219903391",
+  "# strcmp/数组旁路\n?password[]=x          # strcmp(...) 返回 null, null==0 通过\n# JSON bool 注入\n{\"otp\": true}          # == true 的比较直接过"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "php-type-juggling",
+  "magic-hash",
+  "loose-comparison",
+  "strcmp-bypass",
+  "auth-bypass",
+  "otp-bypass"
+ ],
+ "source": "writeup 提炼(CTF 实战实例分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "有源码可读或响应差异可探测",
+  "认证/比较点使用松散算子(PHP ==/strcmp/in_array 或后端 JSON bool 比较)"
+ ],
+ "verify_oracle": "以未授权身份进入下一层页面/拿到 flag,而非仅报错文案变化",
+ "pitfalls": [
+  "PHP 8 后 == 对 \"0e\" 串不再数字串互等(数字串语义收紧)——先定 PHP 版本(PHP 5/7 是 0e 主场)",
+  "传数组只对非数组形参有效:形参已类型声明 (string) 时 500——看报错再换 true 注入",
+  "0e 对 sha1/crc32 同理但串不同,分别扫(QNKCDZO 是 md5 串)",
+  "别把 == 旁路当成终点:过了第一层立刻枚举第二层的泄露面(报错/JS/cookie)"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

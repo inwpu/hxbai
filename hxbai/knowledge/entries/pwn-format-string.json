@@ -1,0 +1,48 @@
+{
+  "id": "pwn-format-string",
+  "title": "格式化字符串 → 任意读/写",
+  "vuln_pattern": "printf(user) 用户可控格式串，%p 泄漏、%n 任意写",
+  "fingerprint": [
+    "format string",
+    "printf(",
+    "%p",
+    "%n",
+    "格式化字符串",
+    "fmt",
+    "任意读",
+    "任意写",
+    "栈",
+    "二进制",
+    "漏洞利用",
+    "泄露"
+  ],
+  "exploit_steps": [
+    "发 %p.%p.%p... 确认可控，数偏移(输入在栈上第几个参数)",
+    "泄漏：%<k>$p 读第 k 个参数——泄 canary、libc、栈地址、PIE 基址",
+    "任意写：%<n>c%<k>$n 把返回地址/GOT 改写为目标(如 printf@got → system)，pwntools fmtstr_payload 自动算",
+    "写 GOT 劫持后触发对应函数拿 shell"
+  ],
+  "key_payloads": [
+    "%p.%p.%p.%p.%p.%p.%p.%p",
+    "%7$p (读第7参数)",
+    "fmtstr_payload(offset, {printf_got: system_addr})"
+  ],
+  "category": "pwn",
+  "cve": [],
+  "tags": [
+    "pwn",
+    "binary",
+    "format-string"
+  ],
+  "source": "original: v2 technique card",
+  "created_ts": 0.0,
+  "preconditions": [
+    "用户输入直接作为 printf 系列的格式串参数"
+  ],
+  "verify_oracle": "%p 回显真实栈/libc 指针值；写后目标函数被劫持(shell 弹出/uid=)",
+  "pitfalls": [
+    "偏移数错则读写全偏——先用 AAAA%k$p 对齐确认",
+    "%n 常被 FORTIFY 禁用，改用其它写原语",
+    "32/64 位参数排布不同"
+  ]
+}

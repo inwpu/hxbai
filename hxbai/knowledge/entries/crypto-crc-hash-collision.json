@@ -1,0 +1,56 @@
+{
+ "id": "crypto-crc-hash-collision",
+ "title": "CRC 线性结构与哈希碰撞类挑战(CRC32/GF(2) 线性代数、MurmurHash 碰撞)",
+ "vuln_pattern": "校验值(CRC 族)被当作密码学原语使用:碰撞构造、已知 CRC 求原像、带噪声 CRC 校验恢复消息、非加密哈希(MurmurHash/FNV)碰撞打 Bloom filter/缓存键",
+ "fingerprint": [
+  "crc",
+  "CRC32",
+  "crc32",
+  "生成多项式",
+  "校验和碰撞",
+  "MurmurHash",
+  "murmurhash3",
+  "bloom filter",
+  "布隆过滤器",
+  "哈希碰撞"
+ ],
+ "exploit_steps": [
+  "定性:CRC 是 GF(2) 上的线性映射(对 XOR 分配)——crc(a XOR b) = crc(a) XOR crc(b) 对固定长度成立。这不是缺陷绕过,是可解方程的代数结构。",
+  "碰撞构造(等长消息):随机取 n 条消息对,把每对的差分 d_i 与 crc 差分 c_i 排成 GF(2) 线性方程组,高斯消元找到 XOR 起来使差分为零的子集(32 个未知数对应 32 位 CRC)。",
+  "已知目标 CRC 求原像:解 crc(x)=target 的线性系统(消息位做未知数,固定其余位),一次消元直接出解——不用暴力 2^32。",
+  "带噪声/多次校验恢复(带噪声多次校验型):把消息未知位当变元、每次校验给一个线性方程,收集足够次数后高斯消元唯一解;实现用 Python 整数位打包 + 按位高斯消元(几十行,不需要 Sage)。",
+  "求生成多项式:给定若干(消息,CRC)对,把多项式系数当未知数解线性系统;或对标准 CRC32 直接假设多项式 0xEDB88320 验证。",
+  "MurmurHash3(非加密,非线性但有 32/64 位短输出):碰撞优先找公开碰撞族/OSINT(已知 murmur3 32 位碰撞对可枚举),或对短输入直接暴力 2^20~2^24 量级;打 Bloom filter 时凑 k 个哈希槽全重的碰撞输入即可伪造'存在'判定。",
+  "实现要点:全部用 Python 手写(GF(2) 矩阵用 list[int] 位行,异或消元),gmpy2 不需要;solver 必须对已知测试向量先自验(拿题目给的样例对校验)。"
+ ],
+ "key_payloads": [
+  "# GF(2) 高斯消元骨架(解 A*x=b, A 是位行向量列表)\nrows = [(a | (b << N)) for a, b in zip(A, B)]   # 增广行: 低 N 位系数, 高位常数\nfor col in range(N):\n    piv = next((r for r in rows if (r >> col) & 1 and (r & ((1<<col)-1)) == 0), None)\n    if piv is None: continue\n    rows = [r ^ piv if r is not piv and (r >> col) & 1 else r for r in rows]\n# 回代/自由变量置零读出解",
+  "# CRC32 线性性自验(动手前先证明给自己看)\nimport zlib\na, b = b'AAAA', b'BBBB'\nassert zlib.crc32(a) ^ zlib.crc32(b) ^ zlib.crc32(bytes(x^y for x,y in zip(a,b))) == 0  # 等长才成立"
+ ],
+ "category": "crypto",
+ "cve": [],
+ "tags": [
+  "crc32",
+  "gf2-linear-algebra",
+  "gaussian-elimination",
+  "hash-collision",
+  "murmurhash",
+  "bloom-filter",
+  "checksum-forgery"
+ ],
+ "source": "writeup 提炼(CTF writeup 解法分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "题目给出 CRC/校验和参与的协议或 oracle(要求碰撞/恢复/伪造)",
+  "或非加密哈希(MurmurHash/FNV/djb2)被用于'存在性判定'(Bloom filter/去重/缓存键)"
+ ],
+ "verify_oracle": "构造的消息通过目标校验(服务端 accept/解出可读 flag),且碰撞对在本地 zlib/binascii 复验一致",
+ "pitfalls": [
+  "CRC 线性性只对等长消息的 XOR 成立——长度不同时先对齐再消元",
+  "别暴力 2^32 撞 CRC:线性代数一次解出,暴力在限时交互里必超时",
+  "MurmurHash 有多个变体(x86_32/x64_128)与种子——先从源码抄准参数再谈碰撞",
+  "解出来的原像常要求可打印/定长:把约束位设为已知量只解自由位"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

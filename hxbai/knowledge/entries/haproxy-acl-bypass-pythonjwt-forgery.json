@@ -1,0 +1,62 @@
+{
+  "id": "haproxy-acl-bypass-pythonjwt-forgery",
+  "title": "HAProxy ACL Bypass with URL Fragment and python-jwt Token Forgery for Privilege Escalation",
+  "vuln_pattern": "Access control bypass via URL fragment (#) in HAProxy (CVE-2023-45539) allows reaching a blocked endpoint to obtain a JWT. The JWT is processed by python-jwt 3.3.3 which contains a signature bypass vulnerability (CVE-2022-39227) enabling role escalation by embedding a tampered payload inside a crafted JSON string.",
+  "fingerprint": [
+    "HTTP response header `server: uWSGI Server`",
+    "HAProxy ACL configuration line `http-request deny if { path_beg,url_dec -i /api/v1/get_ticket }` (exposed via error or config)",
+    "Endpoint `/api/v1/get_ticket` returns JWT when accessed with fragment",
+    "JWT tokens issued by backend",
+    "Python application using `python_jwt` (version 3.3.3 or affected)",
+    "Authorization header contains a JSON object instead of a standard Bearer token",
+    "路径穿越",
+    "令牌",
+    "会话伪造",
+    "提权",
+    "权限提升",
+    "越权",
+    "未授权",
+    "认证",
+    "鉴权",
+    "绕过",
+    "鉴权绕过",
+    "网站",
+    "应用",
+    "接口",
+    "后台"
+  ],
+  "exploit_steps": [
+    "Send a GET request to /api/v1/get_ticket# (with trailing #) to bypass the HAProxy ACL and obtain a valid guest JWT token.",
+    "Extract the token from the JSON response (key `ticket:`).",
+    "Split the JWT into header, payload, and signature parts (base64-encoded).",
+    "Decode the payload, change the `role` claim to `administrator`.",
+    "Re-encode the modified payload to base64 (without padding, using URL-safe encoding) and construct a fake JSON token string that exploits python-jwt's parsing: `{' ' + header + '.' + fake_payload + '.\":\"\",\"protected\":\"' + header + '\", \"payload\":\"' + payload + '\",\"signature\":\"' + signature + '\"}'`.",
+    "Send a GET request to /api/v1/flag with the forged token in the Authorization header (raw JSON, not Bearer).",
+    "Read the flag from the response."
+  ],
+  "key_payloads": [
+    "GET /api/v1/get_ticket# HTTP/1.1",
+    "{\" \" + header + \".\" + fake_payload + \".\":\"\",\"protected\":\"\" + header + \"\", \"payload\":\"\" + payload + \"\",\"signature\":\"\" + signature + \"\"}\""
+  ],
+  "category": "web",
+  "cve": [
+    "CVE-2023-45539",
+    "CVE-2022-39227"
+  ],
+  "tags": [
+    "haproxy",
+    "acl-bypass",
+    "url-fragment",
+    "jwt",
+    "python-jwt",
+    "cve-2023-45539",
+    "cve-2022-39227",
+    "privilege-escalation",
+    "token-forgery"
+  ],
+  "source": "HTB LockTalk writeup",
+  "created_ts": 1786268483.1914399,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

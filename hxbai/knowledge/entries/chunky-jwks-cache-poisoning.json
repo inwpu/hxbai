@@ -1,0 +1,58 @@
+{
+  "id": "chunky-jwks-cache-poisoning",
+  "title": "JWKS Injection via HTTP Request Smuggling Cache Poisoning",
+  "vuln_pattern": "Application uses JWT authentication with a JWKS endpoint and a shared cache. Cache poisoning through HTTP request smuggling allows an attacker to replace the JWKS response with a self-generated JWKS, enabling forgery of privileged tokens.",
+  "fingerprint": [
+    "Endpoint /{uuid}/.well-known/jwks.json per user",
+    "JWT authentication with RS256 algorithm",
+    "User-generated content (e.g., blog posts) can contain arbitrary JSON",
+    "Response redirects to /{user_id}/{post_id} after post creation",
+    "Shared caching layer (presence of cache headers or request smuggling vectors)",
+    "Endpoints: /signup, /login, /create_post, /admin/*",
+    "注入",
+    "令牌",
+    "会话伪造",
+    "提权",
+    "权限提升",
+    "越权",
+    "未授权",
+    "认证",
+    "鉴权",
+    "返回导向编程",
+    "公钥密码",
+    "缓存投毒",
+    "网站",
+    "应用",
+    "接口",
+    "后台"
+  ],
+  "exploit_steps": [
+    "1. Generate an RSA key pair and create a JWKS JSON containing the public key (e.g., with x5c).",
+    "2. Register a normal user and log in to obtain a session.",
+    "3. Create a blog post whose content is the attacker's JWKS JSON.",
+    "4. Obtain the user_id and post_id from the redirect after post creation.",
+    "5. Craft an HTTP request smuggling payload that uses Transfer-Encoding: chunked and Content-Length to inject a request for /{user_id}/.well-known/jwks.json, making it respond with the post body.",
+    "6. Send the raw smuggling payload to the target server to poison the cache.",
+    "7. Wait for cache propagation, then fetch /{user_id}/.well-known/jwks.json to verify it returns the attacker's JWKS.",
+    "8. Sign a JWT for the desired privileged role (e.g., {\"user\": \"admin\"}) using the attacker's private key and RS256.",
+    "9. Access the protected endpoint (e.g., /admin/flag) with the forged JWT in the Authorization header."
+  ],
+  "key_payloads": [
+    "HTTP request smuggling body: GET /<random> HTTP/1.1\\r\\nHost: <host>:<port>\\r\\nTransfer-EncodinG: chunked\\r\\n\\r\\n0\\r\\n\\r\\nGET /post/<user_id>/<post_id> HTTP/1.1\\r\\nRik: X\\r\\n...\\r\\n\\r\\nGET /<user_id>/.well-known/jwks.json HTTP/1.1\\r\\nHost: <host>:<port>\\r\\n\\r\\n",
+    "Forged JWT: jwt.encode({'user': 'admin'}, private_key, algorithm='RS256')"
+  ],
+  "category": "web",
+  "cve": [],
+  "tags": [
+    "cache-poisoning",
+    "request-smuggling",
+    "jwt",
+    "jwks-injection",
+    "web"
+  ],
+  "source": "Sekai chunky writeup",
+  "created_ts": 1786270539.006856,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

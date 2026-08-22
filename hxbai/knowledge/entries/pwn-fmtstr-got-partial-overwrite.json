@@ -1,0 +1,57 @@
+{
+ "id": "pwn-fmtstr-got-partial-overwrite",
+ "title": "格式化字符串任意写:偏移探测→GOT 低2字节部分覆写→触发拿 flag(通用流程)",
+ "vuln_pattern": "用户输入直接作为 printf 格式串(无 %n 过滤)——探测输入落点偏移,把目标地址放进第 N 个变参,用 %N$hn 做 2 字节部分 GOT 覆写劫持控制流",
+ "fingerprint": [
+  "格式化字符串",
+  "format string",
+  "printf",
+  "%n",
+  "%hn",
+  "%p泄露",
+  "GOT覆写",
+  "got overwrite",
+  "partial overwrite",
+  "栈偏移",
+  "stack offset",
+  "fmtstr"
+ ],
+ "exploit_steps": [
+  "连接靶机服务用 pwntools remote()(别裸 nc),记录交互提示符;发送 '%p.%p.%p...' 观察是否回显栈内容——确认格式化串原语。",
+  "确定输入落点偏移:发 'AAAA%p.%p.…' 找 0x41414141 出现在第几个参数位(记为 N)——x86-64 常见 6~10,后续所有 %N$ 操作都以此 N 为准。",
+  "任意写需要第 N 个变参**就是**目标地址:把要写的 GOT 地址嵌入 payload 中,让它精确落在第 N 参的 8 字节对齐位置(前部补 padding 防地址被截半)。",
+  "选 2 字节部分 GOT 覆写:把输入之后会被调用的函数(如 exit/puts)的 GOT 条目低 2 字节改指向 win 函数/one-gadget(只需 2 字节就不需要 libc 泄露,且不要求 PIE 关)。win 地址低 16 位用十进制算:写入值 = 目标 2 字节的十进制。",
+  "发最终 payload '%<写入值>c%N$hn'(前面打印 <写入值> 个字符再写入——响应会慢/大,recv 加超时;值 >0xFFFF 时改用 %hhn 逐字节或分两次 %hn)。",
+  "触发被覆写的函数(如让程序走到 exit),从服务输出读 flag。"
+ ],
+ "key_payloads": [
+  "# 偏移探测\nAAAA%p.%p.%p.%p.%p.%p.%p.%p.%p.%p   # 找 0x41414141 在第几个位\n# 手工任意写骨架\np64(got_target) + b'%<十进制写入值>c%N$hn'\n# pwntools 自动化\nfmtstr_payload(N, {got_target: two_byte_value}, write_size='short')"
+ ],
+ "category": "pwn",
+ "cve": [],
+ "tags": [
+  "format-string",
+  "pwn",
+  "got-overwrite",
+  "partial-overwrite",
+  "fmtstr",
+  "%hn",
+  "x86-64",
+  "stack-offset"
+ ],
+ "source": "复盘提炼(CTF 通用方法)",
+ "source_tier": "seed",
+ "preconditions": [
+  "用户输入直接作为 printf 格式串(%n 未被过滤/未开 _FORTIFY_SOURCE)",
+  "输入缓冲区自身在已知栈偏移可达(x86-64 通常 ≥6)"
+ ],
+ "verify_oracle": "写入后,被劫持的函数跳到目标地址(gdb: break 在 GOT 调用点检查解析后地址),服务输出 flag/win 信息",
+ "pitfalls": [
+  "写入值用十进制算,别把十六进制直接当十进制——错一个常数就写错 2 字节且无报错",
+  "目标地址必须精确落在 %N$ 位置,8 字节对齐——先用 %N$p 确认再写",
+  "%n 被拒(_FORTIFY_SOURCE)= 此路不通,换其他写原语(ROP/堆)",
+  "%<大数>c 会输出几十 KB padding——不是挂了,是正常的;recv 加显式 timeout"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

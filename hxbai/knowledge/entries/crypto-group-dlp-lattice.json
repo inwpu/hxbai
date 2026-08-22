@@ -1,0 +1,74 @@
+{
+ "id": "crypto-group-dlp-lattice",
+ "title": "群上的离散对数与格方法(置换群 DLP+CRT、LLL/CVP 截断 nonce、LCG 状态恢复)",
+ "vuln_pattern": "DLP 不在素域上而在'弱群'(置换群/小阶矩阵群/循环积),或秘密以带噪声/截断的线性关系泄露(截断 LCG/nonce 高位已知)——用结构分解或格归约恢复指数/密钥",
+ "fingerprint": [
+  "discrete log",
+  "离散对数",
+  "DLP",
+  "置换群",
+  "permutation",
+  "cycle decomposition",
+  "lattice",
+  "格攻击",
+  "LLL",
+  "CVP",
+  "SVP",
+  "截断nonce",
+  "truncated nonce",
+  "LCG",
+  "线性同余",
+  "diffie-hellman",
+  "key exchange",
+  "shared secret",
+  "共享密钥",
+  "密钥交换",
+  "exponent recovery",
+  "linear congruential",
+  "未知模数",
+  "伪随机",
+  "state recovery",
+  "generator output"
+ ],
+ "exploit_steps": [
+  "置换群 DLP(求 a 使 g^a = A,g/A 是置换):把 g 分解成不相交循环,每个循环长度 L_i 单独求 DLP——循环上的 DLP 是模 L_i 的离散对数,阶小可直接暴力步进;全部求出后用 CRT 合并指数模 lcm(L_i)。g 的阶 = 各循环长度之 lcm,通常远小于 n!,这就是可解性来源。",
+  "CRT 合并:对每对 (r_i, L_i) 解 x ≡ r_i (mod L_i);模数不两两互素时先做两两 gcd 相容性检查再合并(手写 CRT 20 行,sympy.ntheory.modular.crt 亦可)。",
+  "截断 nonce / 高位已知(ECDSA/LCG 类):把'泄露位已知'写成关于未知位的线性方程,未知量小 → 构造格基用 LLL(fpylll 或手写 LLL)归约,CVP 转化为嵌入 SVP(加一行常数 1);位数估算:未知位总熵 ≪ 模数位长才有解。",
+  "LCG 参数恢复分三档:①模数已知:连续 ≥3 个完整输出解线性方程恢复 a、c。②模数未知(未知模数型):取连续输出 x0..x4,行列式 t_i=x_i*x_{i+2}-x_{i+1}^2 与 u_i=x_{i+1}*x_{i+3}-x_{i+2}^2 均是 m 的倍数,gcd(t_i,u_i,...) 即得 m(去小素因子后);再 a=(x2-x1)*inverse(x1-x0,m) mod m,c=x1-a*x0 mod m。③双 LCG 混流(明文 bit 选流):每条输出试代入两条递推,能同时满足一条流的参数方程者归类——先各自凑够 ≥4 个点解出两套参数,再用参数把全部输出分类,分类结果即明文 bit 序列。输出带截断则进格(每对输出一个线性关系,未知的是被丢的低位)。",
+  "小群/复合阶群:先分解群阶(分解 n!的因子结构/小阶群直接枚举),对每个素因子 p 用 Pohlig-Hellman 把 DLP 降到模 p 子群再暴力/BSGS。",
+  "实现:fpylll 已在镜像(LLLLLL;IntegerMatrix.from_matrix / LLL.reduction),置换用 list 表示、复合用 [p[q[i]] for i],循环分解手写;先在自造小样例上验证再打真实参数。"
+ ],
+ "key_payloads": [
+  "# 置换群 DLP 核心: 循环分解 -> 各循环内步进求局部指数 -> CRT\nperm = [...]  # g 作为映射 list\nseen, cycles = set(), []\nfor s in range(len(perm)):\n    if s in seen: continue\n    c, x = [], s\n    while x not in seen: seen.add(x); c.append(x); x = perm[x]\n    cycles.append(c)   # 每个循环内 DLP = 步进到 A 的位置差\n# 局部指数 r_i 与循环长 L_i 送 CRT: sympy.ntheory.modular.crt(L_list, r_list)",
+  "# fpylll LLL 骨格(截断 nonce: 每个输出一行, 常数列放 1)\nfrom fpylll import IntegerMatrix, LLL\nB = IntegerMatrix.from_matrix(M)   # M: 手工构造的格基\nLLL.reduction(B)\n# 归约后短向量 -> 各坐标即未知小量(解出来后回代验证)",
+  "# 未知模数 LCG: 行列式 gcd 恢复 m\nfrom math import gcd\nx = outs  # 连续输出\nts = [x[i]*x[i+2]-x[i+1]**2 for i in range(len(x)-2)]\nus = [x[i+1]*x[i+3]-x[i+2]**2 for i in range(len(x)-3)]\nm = 0\nfor t in ts+us: m = gcd(m, t)\n# m 去掉小因子后即模数; a=(x2-x1)*pow(x1-x0,-1,m)%m; c=(x1-a*x0)%m"
+ ],
+ "category": "crypto",
+ "cve": [],
+ "tags": [
+  "permutation-group",
+  "dlp",
+  "crt",
+  "pohlig-hellman",
+  "lattice",
+  "lll",
+  "cvp",
+  "lcg",
+  "truncated-nonce"
+ ],
+ "source": "writeup 提炼(CTF writeup 解法分析)",
+ "source_tier": "seed",
+ "preconditions": [
+  "密钥交换/加密建立在非标准群上(置换、矩阵、小阶群)而非素域",
+  "或输出泄露线性关系的低位/高位(截断 nonce、LCG 输出取整)"
+ ],
+ "verify_oracle": "恢复的指数 a 满足 g^a == A(本地重放群运算验证),用恢复的共享密钥解密出可读 flag",
+ "pitfalls": [
+  "置换复合方向([p[q[i]] vs [q[p[i]]])弄反会让所有局部指数错位——先在小置换上定方向",
+  "模数不互素的 CRT 直接套库会抛异常——先做相容性检查,矛盾则说明指数超阶(加 lcm 调整)",
+  "格构造维度/尺度不对时 LLL 出不来短向量:检查每行是否同一量纲,常数列系数取输出模量同量级",
+  "别在置换群上跑通用 BSGS(阶是 lcm,天文数字)——必须先循环分解"
+ ],
+ "anti_fingerprint": [],
+ "created_ts": 0.0
+}
