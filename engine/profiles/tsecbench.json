@@ -1,0 +1,24 @@
+{
+  "_note": "TSecBench 云托管出口策略(数据文件,非引擎代码)。托管模式无公网,大模型端点须经 .tsecbench.gw 网关且 https→http。此文件随库分发,引擎的 egress_apply 纯函数据此参数化 URL 变换;引擎代码内不出现 'tsecbench' 字面量(北极星:不针对某榜特调)。",
+  "rewrite": {
+    "host_suffix": ".tsecbench.gw",
+    "scheme": "http"
+  },
+  "allow_domains": [
+    "api.deepseek.com",
+    "open.bigmodel.cn",
+    "api.anthropic.com",
+    "api.moonshot.cn",
+    "api.kimi.com",
+    "api.hunyuan.cloud.tencent.com",
+    "tokenhub.tencentmaas.com",
+    "ark.cn-beijing.volces.com",
+    "api.minimaxi.com",
+    "api.stepfun.com",
+    "api.xiaomimimo.com",
+    "spark-api-open.xf-yun.com",
+    "api.lingyiwanwu.com",
+    "qianfan.baidubce.com",
+    "api.siliconflow.cn"
+  ]
+}

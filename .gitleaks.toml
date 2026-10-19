@@ -1,0 +1,10 @@
+# gitleaks 配置:公开仓每次发布以单提交重建历史,commit-sha 指纹豁免(.gitleaksignore)会随强推失效,
+# 故用路径级 allowlist(extend 默认规则集,仅豁免已知误报路径)
+[extend]
+useDefault = true
+
+[allowlist]
+  description = "kb-extra 为公开密码学知识页;TEA 算法公开常数 delta=0x9E3779B9 的文档描述命中 generic-api-key 误报"
+  paths = [
+    '''kb-extra/crypto-attacks/06-classical-and-custom-ciphers\.md''',
+  ]

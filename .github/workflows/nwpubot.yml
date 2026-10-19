@@ -1,0 +1,136 @@
+name: nwpubot
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: nwpubot-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  nwpubot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: install tools
+        run: pip install -q bandit semgrep
+
+      - name: bandit high severity (diff vs base)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}
+        run: |
+          bandit -r . -lll -q -f json -o bandit.json || true
+          [ -f bandit.json ] || echo '{"results":[]}' > bandit.json
+          if git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            CHANGED_JSON=$(git diff --name-only "$BASE_SHA"...HEAD | grep '\.py$' | sed 's|^\./||' | jq -R . | jq -s .)
+            if [ "$CHANGED_JSON" != "[]" ]; then
+              BANDIT_HIGH=$(jq --argjson changed "$CHANGED_JSON" '[.results[] | select((.filename | ltrimstr("./")) as $f | ($changed | index($f)) != null)] | length' bandit.json)
+            else
+              BANDIT_HIGH=0
+            fi
+          else
+            BANDIT_HIGH=$(jq '.results|length' bandit.json)
+          fi
+          echo "BANDIT_HIGH=$BANDIT_HIGH" >> "$GITHUB_ENV"
+
+      - name: "semgrep scan (baseline: 只报本 PR 新引入)"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}
+        run: |
+          BASE_ARGS=""
+          if git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            BASE_ARGS="--baseline-commit $BASE_SHA"
+          fi
+          semgrep scan --config p/secrets --config p/python --json --output semgrep.json --metrics=off $BASE_ARGS || true
+          [ -f semgrep.json ] || echo '{"results":[]}' > semgrep.json
+          echo "SEMGREP_ERR=$(jq '[.results[]|select(.extra.severity=="ERROR")]|length' semgrep.json)" >> "$GITHUB_ENV"
+          echo "SEMGREP_ALL=$(jq '.results|length' semgrep.json)" >> "$GITHUB_ENV"
+
+      - name: report on PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          {
+            echo "## nwpubot 安全扫描"
+            echo
+            echo "**本次 PR 改动统计:**"
+            git diff --stat "$BASE_SHA"...HEAD | tail -15
+            echo
+            echo "| 检查项 | 数量 | 门禁 |"
+            echo "|---|---|---|"
+            echo "| gitleaks 密钥泄露 | 见步骤日志 | 任一发现即拦 |"
+            echo "| bandit 高危(改动文件内) | ${BANDIT_HIGH} | >0 即拦 |"
+            echo "| semgrep ERROR 级 | ${SEMGREP_ERR} | >0 即拦 |"
+            echo "| semgrep 全部发现(含 INFO/WARNING) | ${SEMGREP_ALL} | 不拦 |"
+            echo
+            if [ "${BANDIT_HIGH}" != "0" ]; then
+              echo "### bandit 高危明细(改动文件)"
+              jq -r '.results[]|"- `\(.filename):\(.line_number)` \(.test_id) \(.issue_text)"' bandit.json
+              echo
+            fi
+            if [ "${SEMGREP_ERR}" != "0" ]; then
+              echo "### semgrep ERROR 明细"
+              jq -r '[.results[]|select(.extra.severity=="ERROR")][]|"- `\(.path):\(.start.line)` \(.check_id)"' semgrep.json
+              echo
+            fi
+            if [ "${BANDIT_HIGH}" = "0" ] && [ "${SEMGREP_ERR}" = "0" ]; then
+              echo "扫描通过，等待维护者人工审阅合并（公开仓库不自动合并外部 PR）。"
+            else
+              echo "本 PR 存在高危问题，请修复后更新。"
+            fi
+          } > report.md
+          if ! gh pr comment "${PR_NUMBER}" --body-file report.md --edit-last 2>/dev/null; then
+            gh pr comment "${PR_NUMBER}" --body-file report.md
+          fi
+
+      - name: summary on direct push
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "## nwpubot 扫描(main 直推)"
+            echo "- bandit 高危: ${BANDIT_HIGH}"
+            echo "- semgrep ERROR: ${SEMGREP_ERR} / 全部发现: ${SEMGREP_ALL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: manage security issue
+        if: always() && github.event_name != 'pull_request' && !cancelled()
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          PUSHER: ${{ github.event.pusher.name }}
+        run: python3 .github/nwpubot_issue.py
+
+      - name: gate
+        if: env.BANDIT_HIGH != '0' || env.SEMGREP_ERR != '0'
+        run: |
+          echo "高危未清零: bandit=${BANDIT_HIGH} semgrep_err=${SEMGREP_ERR}"
+          exit 1

@@ -1,0 +1,17 @@
+FROM hxctf:base
+COPY engine /app/engine
+COPY solver /app/solver
+RUN cp /app/engine/expsearch.py /opt/expsearch.py 2>/dev/null || true; \
+    cp /app/engine/xform_solve.py /opt/xform_solve.py 2>/dev/null || true; \
+    chmod o+rX /opt/expsearch.py /opt/xform_solve.py 2>/dev/null || true; \
+    python3 -m compileall -q /app/engine && echo "[engine] 语法 OK"; \
+    python3 -c "import sys; sys.path.insert(0,'/app'); import engine.run_bench, engine.scheduler, engine.timebox, engine.loop, engine.providers, engine.prompts, engine.policy, engine.subgoal; print('[engine] import OK (含 timebox 新模块)')"; \
+    mkdir -p /opt/nuclei-cve && cd /root/nuclei-templates 2>/dev/null && find . -path '*cve*' -name '*.yaml' -exec cp --parents -t /opt/nuclei-cve {} + 2>/dev/null; cd /app; \
+    python3 -m engine.kb_search --build-nuclei /opt/nuclei-cve > /opt/nuclei-index.json 2>/dev/null && \
+      echo "[engine] nuclei-index: $(python3 -c 'import json;print(len(json.load(open("/opt/nuclei-index.json"))))' 2>/dev/null) CVE 模板(组件→CVE PoC 知识路线)"; \
+    mkdir -p /opt/nuclei-login && cp -r /root/nuclei-templates/http/default-logins/. /opt/nuclei-login/ 2>/dev/null || true; \
+    python3 -m engine.kb_search --build-default-login /opt/nuclei-login > /opt/nuclei-login-index.json 2>/dev/null && \
+      echo "[engine] nuclei-login-index: $(python3 -c 'import json;print(len(json.load(open("/opt/nuclei-login-index.json"))))' 2>/dev/null) 产品默认口令模板(组件→默认凭证知识路线)"; \
+    chmod -R go+rX /opt/nuclei-cve /opt/nuclei-index.json /opt/nuclei-login /opt/nuclei-login-index.json 2>/dev/null || true; \
+    find /app -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true; \
+    chmod -R o-rwx /app

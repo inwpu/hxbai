@@ -1,0 +1,13 @@
+*
+!Dockerfile.base
+!Dockerfile.app
+!solver
+!solver/**
+!engine
+!engine/**
+!kb-extra
+!kb-extra/**
+engine/test_*.py
+engine/**/test_*.py
+**/__pycache__
+**/*.pyc
